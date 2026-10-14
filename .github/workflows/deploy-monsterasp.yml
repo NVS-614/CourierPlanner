@@ -44,6 +44,13 @@ jobs:
 
           Copy-Item -Path (Join-Path $root "node_modules") -Destination $publish -Recurse -Force
 
+      # Before deploying, enable WebDeploy in MonsterASP.NET > Website > Deploy >
+      # Visual Studio access, then add these GitHub Actions repository secrets:
+      # WEBSITE_NAME=site98612
+      # SERVER_COMPUTER_NAME=https://site98612.siteasp.net:8172 (no /msdeploy.axd)
+      # SERVER_USERNAME=site98612
+      # SERVER_PASSWORD=<Web Deploy password from Visual Studio access>
+      # MonsterASP.NET guide: https://help.monsterasp.net/websites/git-deploy/github-actions
       - name: Deploy to MonsterASP.NET
         uses: rasmusbuchholdt/simply-web-deploy@2.2.0
         with:

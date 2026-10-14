@@ -2,20 +2,43 @@ const express = require('express');
 const cors = require('cors');
 const swaggerUi = require('swagger-ui-express');
 const swaggerDocs = require('./swagger');
+const createSwaggerGoogleAuth = require('./middleware/swaggerGoogleAuth');
 const bodyParser = require('body-parser');
 require('body-parser-xml')(bodyParser);
 
 require('dotenv').config();
 
 const app = express();
+const swaggerGoogleAuth = createSwaggerGoogleAuth();
+app.set('trust proxy', 1);
 
 /* =====================================================
    GLOBAL MIDDLEWARE
 ===================================================== */
 
-// CORS
+// Allow browser requests from Pack Planner and local development only.
+const isAllowedOrigin = (origin) =>
+  origin === 'https://packplanner.runasp.net' ||
+  /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(origin);
+
+app.use((req, res, next) => {
+  // Google redirects back cross-origin; Passport validates the OAuth state.
+  if (req.path === '/auth/google/callback') {
+    return next();
+  }
+
+  const origin = req.get('Origin');
+  if (origin && !isAllowedOrigin(origin)) {
+    return res.status(403).json({
+      status: 'Error',
+      message: 'Origin not allowed'
+    });
+  }
+  next();
+});
+
 app.use(cors({
-  origin: '*',
+  origin: (origin, callback) => callback(null, origin ? isAllowedOrigin(origin) : false),
   methods: ['GET', 'POST', 'DELETE', 'PUT', 'PATCH', 'OPTIONS']
 }));
 
@@ -38,7 +61,15 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+app.use('/auth', ...swaggerGoogleAuth.sessionMiddleware, swaggerGoogleAuth.router);
+app.get('/api-docs/login', ...swaggerGoogleAuth.sessionMiddleware, swaggerGoogleAuth.loginPage);
+app.use(
+  '/api-docs',
+  ...swaggerGoogleAuth.sessionMiddleware,
+  swaggerGoogleAuth.requireAuth,
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerDocs)
+);
 
 /* =====================================================
    NEW UNIFIED CARRIER API (IMPORTANT)
