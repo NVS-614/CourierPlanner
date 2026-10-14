@@ -1,0 +1,38 @@
+ISA*00*          *00*          *ZZ*PLUTOCLOUD     *ZZ*DHLGF          *260517*1327*U*00401*000000777*0*T*>~
+GS*SM*PLUTOCLOUD*DHLGF*20260517*1327*777*X*004010~
+ST*204*0777~
+B2**DHLG**SHIP-9999***PP~
+B2A*00*LT~
+L11*PO-44521*PO~
+G62*10*20260520~
+MS3*DHLG*M~
+NTE*GEN*Liftgate at delivery~
+N1*SH*Acme~
+N2*John~
+N3*123 Industrial Way~
+N4*Chicago*IL*60601*US~
+PER*IC*John*TE*3125550100**EM*john@acme.com~
+N1*CN*Globex~
+N2*Jane~
+N3*500 Commerce Blvd~
+N4*Dallas*TX*75201*US~
+PER*IC*Jane*TE*2145550199**EM*jane@globex.com~
+S5*1*LD*900*L*****2~
+G62*10*20260520~
+AT8*G*L*900*2~
+N1*SF*Acme~
+N2*John~
+N3*123 Industrial Way~
+N4*Chicago*IL*60601*US~
+PER*IC*John*TE*3125550100**EM*john@acme.com~
+S5*2*UL*900*L*****2~
+AT8*G*L*900*2~
+N1*ST*Globex~
+N2*Jane~
+N3*500 Commerce Blvd~
+N4*Dallas*TX*75201*US~
+PER*IC*Jane*TE*2145550199**EM*jane@globex.com~
+L3*900.00*L*****2**106.67*E~
+SE*34*0777~
+GE*1*777~
+IEA*1*000000777~

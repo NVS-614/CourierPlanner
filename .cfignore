@@ -1,0 +1,15 @@
+.git/
+.gitignore
+README.md
+docs/
+tests/
+test/
+spec/
+coverage/
+*.log
+.npm
+.cache
+node_modules/.cache
+Labels/
+requests/
+

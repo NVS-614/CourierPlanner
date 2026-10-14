@@ -1,0 +1,166 @@
+{
+  "carrierInvoiceID": {
+    "filedname": "Invoice Number",
+    "Default": false,
+    "rowtype": "Line Type"
+  },
+  "invoiceDate": {
+    "filedname": "Invoice Date",
+    "Default": false,
+    "format": "DD-MM-YYYY",
+    "rowtype": "Line Type"
+  },
+  "grossAmount": {
+    "fieldname": "Total amount (excl. VAT)",
+    "Default": false,
+    "rowtype": "Line Type"
+  },
+  "grossAmountCurrency": {
+    "fieldname": "Currency",
+    "Default": false,
+    "rowtype": "Line Type"
+  },
+  "orderingPartyLbnId": {
+    "fieldname": "10020004830",
+    "Default": true
+  },
+  "carrierLbnId": {
+    "fieldname": "10020004830",
+    "Default": true
+  },
+  "baseDocumentType": {
+    "fieldname": "1122",
+    "Default": true
+  },
+  "purchasingParty": {
+    "fieldname": "raju",
+    "Default": true
+  },
+  "billFromParty": {
+    "fieldname": "dhl",
+    "Default": true
+  },
+  "senderSystemId": {
+    "fieldname": "QM7_910",
+    "Default": true
+  },
+  "totalTaxAmount": {
+    "fieldname": "Total Tax",
+    "Default": false,
+    "rowtype": "Line Type"
+  },
+  "taxAmountCurrency": {
+    "fieldname": "Currency",
+    "Default": false,
+    "rowtype": "Line Type"
+  },
+  "items": [
+    {
+      "grossAmount": {
+        "fieldname": "Total amount (excl. VAT)",
+        "Default": false,
+        "rowtype": "Line Type"
+      },
+      "grossAmountCurrency": {
+        "fieldname": "Currency",
+        "Default": false,
+        "rowtype": "Line Type"
+      },
+      "freightDocumentID": {
+        "fieldname": "10020004830",
+        "Default": true
+      },
+      "transportationItemID": {
+        "fieldname": "10",
+        "Default": true
+      },
+      "transportationStageID": {
+        "fieldname": "20",
+        "Default": true
+      },
+      "pricingElements": [
+        {
+          "lbnChargeCode": {
+            "fieldname": "EXPR_FREIGHT",
+            "Default": true,
+            "rowtype": "Line Type"
+          },
+          "rateAmount": {
+            "fieldname": "Weight Charge",
+            "Default": false,
+            "rowtype": "Line Type"
+          },
+          "rateAmountCurrency": {
+            "fieldname": "Currency",
+            "Default": false,
+            "rowtype": "Line Type"
+          },
+          "finalAmount": {
+            "fieldname": "Weight Charge",
+            "Default": false,
+            "rowtype": "Line Type"
+          },
+          "finalAmountCurrency": {
+            "fieldname": "Currency",
+            "Default": false,
+            "rowtype": "Line Type"
+          }
+        },
+        {
+          "lbnChargeCode": {
+            "fieldname": "XC1 Name",
+            "Default": false,
+            "rowtype": "Line Type"
+          },
+          "rateAmount": {
+            "fieldname": "XC1 Charge",
+            "Default": false,
+            "rowtype": "Line Type"
+          },
+          "rateAmountCurrency": {
+            "fieldname": "Currency",
+            "Default": false,
+            "rowtype": "Line Type"
+          },
+          "finalAmount": {
+            "fieldname": "XC1 Charge",
+            "Default": false,
+            "rowtype": "Line Type"
+          },
+          "finalAmountCurrency": {
+            "fieldname": "Currency",
+            "Default": false,
+            "rowtype": "Line Type"
+          }
+        },
+        {
+          "lbnChargeCode": {
+            "fieldname": "XC2 Name",
+            "Default": false,
+            "rowtype": "Line Type"
+          },
+          "rateAmount": {
+            "fieldname": "XC2 Charge",
+            "Default": false,
+            "rowtype": "Line Type"
+          },
+          "rateAmountCurrency": {
+            "fieldname": "Currency",
+            "Default": false,
+            "rowtype": "Line Type"
+          },
+          "finalAmount": {
+            "fieldname": "XC2 Charge",
+            "Default": false,
+            "rowtype": "Line Type"
+          },
+          "finalAmountCurrency": {
+            "fieldname": "Currency",
+            "Default": false,
+            "rowtype": "Line Type"
+          }
+        }
+      ]
+    }
+  ]
+}

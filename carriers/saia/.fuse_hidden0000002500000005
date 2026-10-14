@@ -1,0 +1,500 @@
+// carriers/estes/ship.js
+
+const axios = require('axios');
+const moment = require('moment');
+const reuse = require('../../Reuse/utilityfunctions.js');
+const Getcode = require('../../Reuse/ServicesandCodes.js');
+const labeldocprocess = require("../../ShippingDocuments/labeldocuments.js");
+const documentprocess = require("../../ShippingDocuments/documents.js");
+
+
+const axiosInstance = axios.create({
+    timeout: 20000,
+    maxContentLength: Infinity,
+    maxBodyLength: Infinity
+});
+
+
+module.exports = async (request, chargeCodes) => {
+
+    const { HEADER_INFO, CARRIER_DETAILS, PACKAGES, SHIPTO, SHIPPER } = request;
+
+    let FINALRESPONSE = {
+        STATUS: '',
+        TRACKING_STATUS: '',
+        PACKAGES: [],
+        CHARGE_DETAILS: [],
+        SHIPPING_DOCUMENTS: [],
+        ERRORS: [],
+        HEADER_INFO
+    };
+    const shipurl = CARRIER_DETAILS.SHIPURL || process.env.SAIA_SHIP;
+    const rateurl = CARRIER_DETAILS.RATEURL || process.env.SAIA_RATE;
+
+    const SLSS = request?.SHIPMENT_LVL_SPECIAL_SERVICES;
+    try {
+        const [paymentterms, paymentpayer] =
+            PAYMENT_MAP[CARRIER_DETAILS?.PAYMENT_TYPE] || ['Prepaid', 'Shipper'];
+        // Get rates first
+        const strRateQuote = await GetSAIArates(request, rateurl, FINALRESPONSE, chargeCodes);
+        console.log('Rate Quote:', strRateQuote);
+        // Prepare shipment request
+        const [datePart] = HEADER_INFO.SHIP_DATE.split('T');
+        const grossWeight = PACKAGES.reduce(
+            (total, pkg) => total + Number(pkg.WEIGHT || 0),
+            0
+        );
+
+        const linearLength = PACKAGES.reduce(
+            (t, p) => t + Number(p?.DIMENSION?.split('X')?.[0] || 0),
+            0
+        );
+        const isTest = process.env?.PRODFLAG !== 'TRUE';
+        const shipReq = {
+            bol: {
+                requestedPickupDate: HEADER_INFO.SHIP_DATE,
+                function: 'Create',
+                isTest: isTest,
+                requestorRole: paymentpayer
+            },
+            version: '2.0.1',
+            images: {
+                includeBol: true,
+                includeShippingLabels: true,
+                shippingLabels: {
+                    format: "Zebra",
+                    quantity: 1
+                }
+            },
+
+            payment: {
+                terms: paymentterms
+            },
+            origin: buildAddress(SHIPPER),
+            destination: buildAddress(SHIPTO),
+            commodities:
+            {
+                lineItemLayout: Boolean(PACKAGES?.[0]?.STACKABLE) ? 'Stacked' : 'Nested',
+                handlingUnits: PACKAGES.map(pkg => buildPackageItem(pkg, SLSS)) || []
+            },
+            referenceNumbers: {
+                quoteId: strRateQuote?.toString() || "",
+                additionalReferences: [{
+                    name: "Customer Reference Id",
+                    value: CARRIER_DETAILS.REFERENCE2
+                }]
+
+            },
+            shipmentTotals: {
+                grossWeight: grossWeight,
+                weightUnit: getBOLWeightUnit(PACKAGES?.[0]?.WEIGHT_UNITS),
+                linearLength: linearLength,
+                dimensionsUnit: getBOLDimensionUnit(PACKAGES?.[0]?.DIMENSION_UNITS),
+            },
+            accessorials: {
+                codes: []
+            }
+        }
+        if (String(SLSS?.INSIDE_PICKUP).toLowerCase() === 'true') { shipReq.accessorials.codes.push('IPU') }
+        if (String(SLSS?.INSIDE_DELIVERY).toLowerCase() === 'true') { shipReq.accessorials.codes.push('IDL') }
+        if (String(SLSS?.LIMITED_ACCESS_PICKUP).toLowerCase() === 'true') {
+            shipReq.accessorials.codes.push('LTDAP');
+            shipReq.accessorials.limitedAccessType = { origin: 'Other' }
+        }
+        if (String(SLSS?.LIMITED_ACCESS_DELIVERY).toLowerCase() === 'true') {
+            shipReq.accessorials.codes.push('LTDAD');
+            shipReq.accessorials.limitedAccessType = { destination: 'Other' }
+        }
+        if (String(SLSS?.LIFT_GATE_PICKUP).toLowerCase() === 'true') { shipReq.accessorials.codes.push('LFTP') }
+        if (String(SLSS?.LIFT_GATE_DELIVERY).toLowerCase() === 'true') { shipReq.accessorials.codes.push('LFTD') }
+        if (String(SLSS?.DELIVERY_APPOINTMENT).toLowerCase() === 'true') { shipReq.accessorials.codes.push('APTD') }
+        if (String(SLSS?.PICKUP_APPOINTMENT).toLowerCase() === 'true') { shipReq.accessorials.codes.push('APTP') }
+        if (String(SLSS?.SORT_AND_SEGREGATE).toLowerCase() === 'true') {
+            shipReq.accessorials.codes.push('SRT');
+            shipReq.accessorials.sortAndSegregateDetails = { pieces: SLSS.SEG_PIECE_COUNT || 1 }
+        }
+
+        if (String(SLSS?.HAZMAT).toLowerCase() === 'true') {
+            shipReq.accessorials.codes.push('HAZ');
+            shipReq.accessorials.hazardousDetails = {
+                emergencyContact: {
+                    name: SLSS.HazmatContact || SHIPPER.CONTACT,
+                    phone: SLSS.HazmatPhone || SHIPPER.PHONE
+                }
+            }
+        }
+        if (String(SLSS?.PROTECT_FROM_FREEZING).toLowerCase() === 'true') { shipReq.accessorials.codes.push('PSC') }
+        if (String(SLSS?.RESIDENTIAL_DELIVERY).toLowerCase() === 'true') { shipReq.accessorials.codes.push('RES') }
+        if (String(SLSS?.RESIDENTIAL_PICKUP).toLowerCase() === 'true') { shipReq.accessorials.codes.push('REP') }
+        if (String(SLSS?.SINGLE_SHIPMENT).toLowerCase() === 'true') { shipReq.accessorials.codes.push('SS') }
+        if (String(SLSS?.OVER_LENGTH).toLowerCase() === 'true') { shipReq.accessorials.codes.push('OVR') }
+
+
+        console.log('SAIA Ship Request:', JSON.stringify(shipReq, null, 2));
+
+        // Create shipment
+        const sres = await axiosInstance.post(shipurl, shipReq, {
+            headers: {
+                'Content-Type': 'application/json',
+                accept: 'application/json',
+                'Ocp-Apim-Subscription-Key': CARRIER_DETAILS?.SHIP_KEY,
+                Authorization: 'Basic ' + Buffer.from(`${CARRIER_DETAILS.USERID}:${CARRIER_DETAILS.PASSWORD}`).toString('base64')
+
+            }
+        });
+
+        console.log('SAIA Ship Response:', JSON.stringify(sres.data));
+
+        if (sres.data.messageStatus.status === 'FAIL') {
+            FINALRESPONSE.STATUS = 'Error';
+            FINALRESPONSE.TRACKING_STATUS = '';
+            FINALRESPONSE.ERRORS = handleErrorResponse(sres.data.messageStatus);
+            return FINALRESPONSE;
+        }
+        FINALRESPONSE.STATUS = 'Success';
+        FINALRESPONSE.TRACKING_STATUS = 'Shipped';
+        // Update tracking numbers
+        PACKAGES.forEach(pkg => {
+            FINALRESPONSE.PACKAGES.push({ TRACKING_NUMBER: sres.data.referenceNumbers.pro.toString() });
+        });
+        const trackingNo = sres.data.referenceNumbers.pro;
+        FINALRESPONSE.HEADER_INFO.MASTER_TRACKING_NUMBER = FINALRESPONSE.PACKAGES[0]?.TRACKING_NUMBER;
+
+        const images = sres?.data?.images;
+        let docName = '', contentType = 'Label';
+        if (images?.shippingLabels) {
+            docName = trackingNo + '_Label.PDF'
+            const formatDoc = reuse.formatShipDoc('ESTES', contentType, 1, docName, images.shippingLabels, 'PDF');
+            FINALRESPONSE.SHIPPING_DOCUMENTS.push(formatDoc);
+        }
+
+        if (images?.bol) {
+            docName = trackingNo + '_BOL.PDF'
+            const formatDoc = reuse.formatShipDoc('ESTES', 'Bill Of Ladding', 1, docName, images.bol, 'PDF');
+            FINALRESPONSE.SHIPPING_DOCUMENTS.push(formatDoc);
+        }
+
+        let docp = [];
+        // Generate other documents
+        // if (CARRIER_DETAILS?.LABELTYPE === 'ZPL') {
+        //  docp.push(documentprocess.preparelabel_ZPL(request));
+        // } else if (CARRIER_DETAILS?.LABELTYPE === 'PNG') {
+        //  docp.push(documentprocess.prepareLabel_png_sharp(request));
+        //  } else {
+        //  docp.push(labeldocprocess.preparelabel_pdfkit(request));
+        // }
+        docp.push(documentprocess.preparePackingSlip_pdfkit(request));
+
+        /* ---------------------------
+        Promise.all with timeout
+        ----------------------------*/
+
+        const promiseTimeout = (promise, ms) => {
+            return Promise.race([
+                promise,
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error("Document processing timeout")), ms)
+                )
+            ]);
+        };
+        try {
+            if (docp.length > 0) {
+                const data = await promiseTimeout(Promise.all(docp), 15000);
+
+                data.forEach(docdata => {
+                    try {
+                        if (Array.isArray(docdata)) {
+                            docdata.forEach(rdocdata =>
+                                FINALRESPONSE.SHIPPING_DOCUMENTS.push(rdocdata)
+                            );
+                        } else if (docdata) {
+                            FINALRESPONSE.SHIPPING_DOCUMENTS.push(docdata);
+                        }
+                    } catch (err) {
+                        console.error("Document parse error:", err.message);
+                    }
+                });
+            }
+        } catch (docError) {
+            console.error("Document processing failed:", docError.message);
+            FINALRESPONSE.ERRORS.push(docError.message);
+        }
+
+        return FINALRESPONSE;
+
+    } catch (ex) {
+        FINALRESPONSE.ERRORS = handleErrorResponse(ex);
+        return FINALRESPONSE;
+    }
+};
+
+
+// Rate quote function
+async function GetSAIArates(request, url, FINALRESPONSE, chargeCodes) {
+    try {
+        const service = request.CARRIER_DETAILS?.SERVICE_CODE || request.CARRIER_DETAILS?.SERVICE_NAME;
+
+        let rateReq = {};
+        const [paymentterms, paymentpayer] =
+            PAYMENT_MAP[request.CARRIER_DETAILS?.PAYMENT_TYPE] || ['Prepaid', 'Shipper'];
+        rateReq['payer'] = paymentpayer,
+            rateReq['pickUpDate'] = request.HEADER_INFO.SHIP_DATE.split('T')[0],
+            //-> Origin
+            rateReq['origin'] = {}
+
+        let originZip = '', destinationZip = '';
+        if (request.SHIPPER.COUNTRY?.toUpperCase() === 'US') {
+            originZip = request.SHIPPER.ZIPCODE.replace(/\D/g, '').substring(0, 5);
+        }
+        if (request.SHIPTO.COUNTRY?.toUpperCase() === 'US') {
+            destinationZip = request.SHIPTO.ZIPCODE.replace(/\D/g, '').substring(0, 5);
+        }
+        rateReq.origin['city'] = request.SHIPPER.CITY;
+        rateReq.origin['state'] = request.SHIPPER.STATE;
+        rateReq.origin['zipcode'] = originZip;
+        //->Destination
+        rateReq['destination'] = {}
+        rateReq.destination['city'] = request.SHIPTO.CITY;
+        rateReq.destination['state'] = request.SHIPTO.STATE;
+        rateReq.destination['zipcode'] = destinationZip;
+        rateReq['weightUnits'] = getRateWeightUnit(request.PACKAGES[0].WEIGHT_UNITS),
+            rateReq['measurementUnit'] = getRateDimensionUnit(request.PACKAGES[0].DIMENSION_UNITS),
+            rateReq['details'] = []
+        let excessiveLengthTotalInches = null
+        request.PACKAGES.forEach(element => {
+            xlineItem = {}
+            //xlineItem['class'] = Number(element.LTL_CLASS ?? 50);
+            xlineItem['class'] = Number(element.LTL_CLASS || 50);
+            xlineItem['units'] = (Array.isArray(element?.ItemsInfo) && element.ItemsInfo.length > 0
+                ? element.ItemsInfo.length
+                : Number(element?.Quantity)) || 1;
+            //-----> dimensions     
+
+            if (element?.DIMENSION) {
+                dims = element.DIMENSION.toUpperCase().split('X');
+                excessiveLengthTotalInches = Number(dims[0])
+                xlineItem['length'] = Number(dims[0])
+                xlineItem['height'] = Number(dims[2])
+                xlineItem['width'] = Number(dims[1])
+
+            }
+            xlineItem['weight'] = Math.floor(Number(element.WEIGHT));
+
+
+            rateReq.details.push(xlineItem)
+
+        });
+
+        rateReq['accessorials'] = {};
+        rateReq.accessorials['code'] = [];
+        const SLSS = request?.SHIPMENT_LVL_SPECIAL_SERVICES;
+        if (String(SLSS?.INSIDE_PICKUP).toLowerCase() === 'true') { rateReq.accessorials.code.push('InsidePickup') }
+        if (String(SLSS?.INSIDE_DELIVERY).toLowerCase() === 'true') { rateReq.accessorials.code.push('InsideDelivery') }
+        if (String(SLSS?.LIMITED_ACCESS_PICKUP).toLowerCase() === 'true') { rateReq.accessorials.code.push('LimitedAccessLocationPU') }
+        if (String(SLSS?.LIMITED_ACCESS_DELIVERY).toLowerCase() === 'true') { rateReq.accessorials.code.push('LimitedAccessLocation') }
+        if (String(SLSS?.LIFT_GATE_PICKUP).toLowerCase() === 'true') { rateReq.accessorials.code.push('LiftgateServicePU') }
+        if (String(SLSS?.LIFT_GATE_DELIVERY).toLowerCase() === 'true') { rateReq.accessorials.code.push('LiftgateService') }
+        if (String(SLSS?.DELIVERY_APPOINTMENT).toLowerCase() === 'true') { rateReq.accessorials.code.push('ArrivalNotice/Appointment') }
+        if (String(SLSS?.SORT_AND_SEGREGATE).toLowerCase() === 'true') { rateReq.accessorials.code.push('Sorting/Segregating') }
+        if (String(SLSS?.HAZMAT).toLowerCase() === 'true') { rateReq.accessorials.code.push('Hazardous') }
+        if (String(SLSS?.PROTECT_FROM_FREEZING).toLowerCase() === 'true') { rateReq.accessorials.code.push('ProtectionFromFreezing') }
+        if (String(SLSS?.OVER_LENGTH).toLowerCase() === 'true') {
+            rateReq.accessorials.code.push('ExcessiveLength')
+            rateReq.accessorials.excessiveLengthTotalInches = excessiveLengthTotalInches
+        }
+        console.log('SAIA Rate Request is')
+        console.log(JSON.stringify(rateReq))
+
+        const rateRes = await axios.post(url, rateReq, {
+            headers: {
+                'Content-Type': 'application/json',
+                accept: 'application/json',
+                'RQ-Key': request.CARRIER_DETAILS.RATE_KEY,
+                Authorization: 'Basic ' + Buffer.from(`${request.CARRIER_DETAILS.USERID}:${request.CARRIER_DETAILS.PASSWORD}`).toString('base64')
+
+            },
+        });
+
+        strRateQuote = rateRes.data.quoteNumber;
+
+        // Add charges to request body
+        const totalCharge = rateRes.data.rateDetails.totalInvoice;
+        FINALRESPONSE.CHARGE_DETAILS.push(reuse.ShipRateRes('Discounted Freight', totalCharge, 'USD', 'DISC'));
+        FINALRESPONSE.CHARGE_DETAILS.push(reuse.ShipRateRes('Published Freight', totalCharge, 'USD', 'LIST'));
+        rateRes.data.rateAccessorials.accessorials.forEach(acc => {
+            FINALRESPONSE.CHARGE_DETAILS.push(reuse.ShipSurRateRes(acc.description, parseFloat(acc.amount), 'USD', acc.internalCode, 'SAIA', chargeCodes)); //acc.code || 
+        });
+
+
+        return strRateQuote;
+    } catch (error) {
+        console.error('Rate quote error:', error.response?.data || error.message);
+        //throw error;
+    }
+}
+
+
+const formatPhoneTo10Digits = (phone) => {
+    if (!phone) return '';
+    const digitsOnly = phone.replace(/\D/g, '');
+    const paddedPhone = digitsOnly.padStart(10, '0');
+    return paddedPhone;
+};
+
+const buildAddress = (data) => {
+    // Extract and validate postal code
+    let postalCode = data.ZIPCODE || '';
+    let fiveDigitZip = '';
+    if (data.COUNTRY?.toUpperCase() === 'US') {
+        fiveDigitZip = postalCode.replace(/\D/g, '').substring(0, 5);
+    }
+    return {
+        name: data.COMPANY,
+        address1: data.ADDRESS_LINE1,
+        address2: data.ADDRESS_LINE2,
+        city: data.CITY,
+        stateProvince: data.STATE,
+        postalCode: fiveDigitZip,
+        country: reuse.getCountry3(data.COUNTRY),
+        contact: {
+            phone: formatPhoneTo10Digits(data.PHONE),
+            email: data.EMAIL
+        },
+    };
+};
+
+const buildPackageItem = (pkg = {}, SLSS = {}) => {
+    const PLSS = pkg?.PACKAGE_LVL_SPECIAL_SERVICES;
+    const dimensionParts = pkg?.DIMENSION
+        ? pkg.DIMENSION.toUpperCase().split('X').map(Number)
+        : [];
+
+    const lineItems = (Array.isArray(pkg.ITEM_INFO) && pkg.ITEM_INFO.length > 0
+        ? pkg.ITEM_INFO
+        : [{
+            DESCRIPTION: pkg.DESCRIPTION || 'DUMMY ITEM',
+            ITEM_WEIGHT: Math.floor(Number(pkg.WEIGHT || 1)),
+            QUANTITY: Number(pkg.QUANTITY || 1),
+            ITEM_PACKING_TYPE: pkg.ITEM_PACKING_TYPE || 'BOX',
+            LTL_CLASS: String(pkg.LTL_CLASS || '50')
+        }]
+    ).map(item => ({
+        description: item.DESCRIPTION || 'DUMMY ITEM',
+        weight: Math.floor(Number(item.ITEM_WEIGHT || pkg.WEIGHT || 1)),
+        pieces: Number(item.QUANTITY || 1),
+        packagingType: item.PACKING_TYPE || 'BOX',
+        hazardous: false,
+        classification: String(item.LTL_CLASS || '50'),
+        ...(String(SLSS?.HAZMAT).toLowerCase() === 'true' && {
+            hazardous: true,
+            hazardousDescription: PLSS.HAZMAT.PROPER_SHIPPING_NAME || "UN 1090, Acetone, 3, PG II",
+            hazardousDetails: {
+                weight: PLSS.HAZMAT.WEIGHT || 45,
+                class: PLSS.HAZMAT.HAZ_CLASS || "3",
+                unnaNumber: PLSS.HAZMAT.UNID_NUMBER || "1005",
+                propername: PLSS.HAZMAT.PROPER_SHIPPING_NAME || "Anhydrous ammonia",
+                technicalName: PLSS.HAZMAT.TECHNICAL_NAME || "NH3",
+                packingGroup: PLSS.HAZMAT.PACKAGING_GROUP_TYPE || "2",
+                contractNumber: PLSS.HAZMAT.EMERGENCY_CONTACT || "54321"
+
+            }
+        })
+    }));
+
+
+
+    return {
+        count: pkg.QUANTITY || 1,
+        type: (pkg?.PACKING_TYPE && packagingTypeCodes(pkg.PACKING_TYPE)) || 'BAG',
+
+        weightUnit: getBOLWeightUnit(pkg?.WEIGHT_UNITS),
+        isHazmat: false,
+        weight: Math.floor(Number(pkg.WEIGHT)),
+
+        ...(dimensionParts.length === 3 && {
+            length: dimensionParts[0],
+            width: dimensionParts[1],
+            height: dimensionParts[2],
+            dimensionsUnit: getBOLDimensionUnit(pkg?.DIMENSION_UNITS)
+        }),
+
+        lineItems
+    };
+};
+
+const handleErrorResponse = (error) => {
+    console.error('Error:', error?.response?.data ? JSON.stringify(error.response.data) : error?.message || error);
+    // Extract error messages
+    const errorMessages =
+        error?.response?.data?.message
+            ? [error.response.data.message]
+            : Array.isArray(error?.message)
+                ? error.message.map(e => e.msg ?? e)
+                : [error?.message || error || 'An unexpected error occurred'];
+    return errorMessages;
+};
+
+
+
+const PAYMENT_MAP = Object.freeze({
+    Sender: ['Prepaid', 'Shipper'],
+    Recipient: ['Collect', 'Consignee'],
+    Collect: ['Collect', 'Consignee'],
+    ThirdParty: ['Third Party', 'Third Party']
+});
+
+const getBOLWeightUnit = (unit = '') =>
+    /^l/i.test(unit) ? 'Pounds' :
+        /^k/i.test(unit) ? 'Kilograms' :
+            'Pounds';
+
+const getRateWeightUnit = (unit = '') =>
+    /^l/i.test(unit) ? 'LBS' :
+        /^k/i.test(unit) ? 'KGS' :
+            'Pounds';
+const getRateDimensionUnit = (unit = '') =>
+    /^c/i.test(unit) ? 'CM' :
+        /^i/i.test(unit) ? 'IN' :
+            'Inches';
+
+const getBOLDimensionUnit = (unit = '') =>
+    /^c/i.test(unit) ? 'Centimeters' :
+        /^i/i.test(unit) ? 'Inches' :
+            'Inches';
+
+
+function packagingTypeCodes(name) {
+    const packagingMap = {
+        BAG: 'BAG',
+        BALE: 'BAL',
+        BARREL: 'BBL',
+        BASKET: 'BSK',
+        BOX: 'BOX',
+        BUCKET: 'BXT',
+        BUNDLE: 'BDL',
+        CAN: 'CAN',
+        CARTON: 'CTN',
+        CASE: 'CAS',
+        COIL: 'COL',
+        CRATE: 'CRT',
+        CYLINDER: 'CYL',
+        DRUM: 'DRM',
+        ENVELOPE: 'ENV',
+        KIT: 'KIT',
+        LOOSE: 'LSE',
+        PACKAGE: 'PKG',
+        PAIL: 'PAL',
+        PALLET: 'PAT',
+        PIECE: 'PCS',
+        REEL: 'REL',
+        ROLL: 'ROL',
+        SKID: 'SKD',
+        SPOOL: 'SPL',
+        TANK: 'TNK',
+        TOTE: 'TBN',
+        TUBE: 'TBE',
+        UNIT: 'UNT'
+    };
+
+    return packagingMap[name?.toUpperCase()] || name;
+}

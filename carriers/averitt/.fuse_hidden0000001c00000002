@@ -1,0 +1,551 @@
+// carriers/estes/ship.js
+
+const axios = require('axios');
+const moment = require('moment');
+const reuse = require('../../Reuse/utilityfunctions.js');
+const Getcode = require('../../Reuse/ServicesandCodes.js');
+const labeldocprocess = require("../../ShippingDocuments/labeldocuments.js");
+const documentprocess = require("../../ShippingDocuments/documents.js");
+const { fetchChargeCodes } = require('../../database/dbsaveandupdate.js');
+
+const axiosInstance = axios.create({
+    timeout: 20000,
+    maxContentLength: Infinity,
+    maxBodyLength: Infinity
+});
+
+
+module.exports = async (request, chargeCodes) => {
+
+    const { HEADER_INFO, CARRIER_DETAILS, PACKAGES, SHIPTO, SHIPPER } = request;
+
+    let FINALRESPONSE = {
+        STATUS: '',
+        TRACKING_STATUS: '',
+        PACKAGES: [],
+        CHARGE_DETAILS: [],
+        SHIPPING_DOCUMENTS: [],
+        ERRORS: [],
+        HEADER_INFO
+    };
+    const rateurl = request.CARRIER_DETAILS?.RATEURL || process.env.AVERITT_SHIP_ALT;
+    const shipurl = CARRIER_DETAILS.SHIPURL || process.env.AVERITT_SHIP;
+    const SLSS = request?.SHIPMENT_LVL_SPECIAL_SERVICES;
+    try {
+        // Get rates first
+        const [paymentterms, paymentpayer] =
+            PAYMENT_MAP[CARRIER_DETAILS?.PAYMENT_TYPE] || ['Prepaid', 'Shipper'];
+        // Get rates first
+        // const strRateQuote = await GetESTESrates(request, rateurl, token, FINALRESPONSE,chargeCodes);
+        //  console.log('Rate Quote:', strRateQuote);
+        // Prepare shipment request
+        const [datePart] = HEADER_INFO.SHIP_DATE.split('T');
+        const grossWeight = PACKAGES.reduce(
+            (total, pack) => total + Number(pack.WEIGHT || 0),
+            0
+        );
+
+        const linearLength = PACKAGES.reduce(
+            (t, p) => t + Number(p?.DIMENSION?.split('X')?.[0] || 0),
+            0
+        );
+        const isTest = process.env?.PRODFLAG !== 'TRUE';
+        const shipReq = {
+            bol: {
+                requestedPickupDate: HEADER_INFO.SHIP_DATE,
+                function: 'Create',
+                isTest: isTest,
+                requestorRole: paymentpayer
+            },
+            version: 'v2.0.1',
+            images: {
+                includeBol: true,
+                includeShippingLabels: true,
+                shippingLabels: {
+                    format: "Zebra",
+                    quantity: 1
+                }
+            },
+
+            payment: {
+                terms: paymentterms
+            },
+            origin: buildAddress(SHIPPER),
+            destination: buildAddress(SHIPTO),
+            billTo: buildAddress(SHIPTO),
+            commodities:
+            {
+                lineItemLayout: Boolean(PACKAGES?.[0]?.STACKABLE) ? 'Stacked' : 'Nested',
+                handlingUnits: PACKAGES.map(pkg => buildPackageItem(pkg, SLSS)) || []
+            },
+            referenceNumbers: {
+                // quoteId: strRateQuote?.toString() || "",
+                ...((CARRIER_DETAILS.REFERENCE2) && {
+                    additionalReferences: [{
+                        name: "Customer Reference Id",
+                        value: CARRIER_DETAILS.REFERENCE2
+                    }]
+                })
+
+
+            },
+            shipmentTotals: {
+                grossWeight: grossWeight,
+                weightUnit: getBOLWeightUnit(PACKAGES?.[0]?.WEIGHT_UNITS),
+                linearLength: linearLength,
+                dimensionsUnit: getBOLDimensionUnit(PACKAGES?.[0]?.DIMENSION_UNITS),
+            },
+            accessorials: {
+                codes: []
+            }
+        }
+
+
+        shipReq.accessorials.limitedAccessType = {}
+        if (reuse.isTrue(SLSS?.INSIDE_PICKUP)) { shipReq.accessorials.codes.push('IPU') }
+        if (reuse.isTrue(SLSS?.INSIDE_DELIVERY)) { shipReq.accessorials.codes.push('IDL') }
+        if (reuse.isTrue(SLSS?.LIMITED_ACCESS_PICKUP)) {
+            shipReq.accessorials.codes.push('LTDAP');
+
+            shipReq.accessorials.limitedAccessType.origin = 'Other';
+        }
+        if (reuse.isTrue(SLSS?.LIMITED_ACCESS_DELIVERY)) {
+            shipReq.accessorials.codes.push('LTDAD');
+            shipReq.accessorials.limitedAccessType.destination = 'Other';
+        }
+        if (reuse.isTrue(SLSS?.LIFT_GATE_PICKUP)) { shipReq.accessorials.codes.push('LFTP') }
+        if (reuse.isTrue(SLSS?.LIFT_GATE_DELIVERY)) { shipReq.accessorials.codes.push('LFTD') }
+        if (reuse.isTrue(SLSS?.DELIVERY_APPOINTMENT)) { shipReq.accessorials.codes.push('APTD') }
+        if (reuse.isTrue(SLSS?.PICKUP_APPOINTMENT)) { shipReq.accessorials.codes.push('APTP') }
+        if (reuse.isTrue(SLSS?.SORT_AND_SEGREGATE)) {
+            shipReq.accessorials.codes.push('SRT');
+            shipReq.accessorials.sortAndSegregateDetails = { pieces: SLSS.SEG_PIECE_COUNT || 1 }
+        }
+        if (reuse.isTrue(SLSS?.HAZMAT)) {
+            shipReq.accessorials.codes.push('HAZ');
+            shipReq.accessorials.hazardousDetails = {
+                emergencyContact: {
+                    name: SLSS.EmergencyContact || SHIPPER.CONTACT,
+                    phone: SLSS.EmergencyPhone || SHIPPER.PHONE
+                }
+            }
+        }
+        if (reuse.isTrue(SLSS?.PROTECT_FROM_FREEZING)) { shipReq.accessorials.codes.push('PSC') }
+        if (reuse.isTrue(SLSS?.RESIDENTIAL_DELIVERY)) { shipReq.accessorials.codes.push('RES') }
+        if (reuse.isTrue(SLSS?.RESIDENTIAL_PICKUP)) { shipReq.accessorials.codes.push('REP') }
+        if (reuse.isTrue(SLSS?.SINGLE_SHIPMENT)) { shipReq.accessorials.codes.push('SS') }
+        if (reuse.isTrue(SLSS?.OVER_LENGTH)) { shipReq.accessorials.codes.push('OVR') }
+
+        if (reuse.isTrue(SLSS?.IN_BOND)) { shipReq.accessorials.codes.push('INBD') }
+        if (reuse.isTrue(SLSS?.TIME_CRITICAL_APPOINTMENT)) { shipReq.accessorials.codes.push('TCS') }
+        if (reuse.isTrue(SLSS?.SIGNATURE_REQUIRED)) { shipReq.accessorials.codes.push('HDSIG') }
+        if (reuse.isTrue(SLSS?.GUARANTEED_DELIVERY)) { shipReq.accessorials.codes.push('GTD_PM') }
+
+
+        console.log('RL Ship Request:', JSON.stringify(shipReq, null, 2));
+
+        // Create shipment
+        const Shipres = await axiosInstance.post(shipurl + CARRIER_DETAILS.ACCESS_KEY, shipReq, {
+            headers: {
+                'content-type': 'application/json'
+
+            }
+        });
+
+        console.log('RL Ship Response:', Shipres.data);
+
+        FINALRESPONSE.STATUS = 'Success';
+        FINALRESPONSE.TRACKING_STATUS = 'Shipped';
+        // Update tracking numbers
+        PACKAGES.forEach(pkg => {
+            FINALRESPONSE.PACKAGES.push({ TRACKING_NUMBER: Shipres.data.referenceNumbers.pro });
+        });
+        const trackingNo = Shipres.data.referenceNumbers.pro;
+        FINALRESPONSE.HEADER_INFO.MASTER_TRACKING_NUMBER = FINALRESPONSE.PACKAGES[0]?.TRACKING_NUMBER;
+
+        const images = Shipres?.data?.images;
+        let docName = '', contentType = 'Label';
+        if (images?.shippingLabels) {
+            docName = trackingNo + '_Label.PDF'
+            const formatDoc = reuse.formatShipDoc('ESTES', contentType, 1, docName, images.shippingLabels, 'PDF');
+            FINALRESPONSE.SHIPPING_DOCUMENTS.push(formatDoc);
+        }
+        if (images?.bol) {
+            docName = trackingNo + '_BOL.PDF'
+            const formatDoc = reuse.formatShipDoc('ESTES', 'Bill Of Ladding', 1, docName, images.bol, 'PDF');
+            FINALRESPONSE.SHIPPING_DOCUMENTS.push(formatDoc);
+        }
+
+        let docp = [];
+        // Generate other documents
+        // if (CARRIER_DETAILS?.LABELTYPE === 'ZPL') {
+        //  docp.push(documentprocess.preparelabel_ZPL(request));
+        // } else if (CARRIER_DETAILS?.LABELTYPE === 'PNG') {
+        //  docp.push(documentprocess.prepareLabel_png_sharp(request));
+        //  } else {
+        //  docp.push(labeldocprocess.preparelabel_pdfkit(request));
+        // }
+        docp.push(documentprocess.preparePackingSlip_pdfkit(request));
+
+        /* ---------------------------
+        Promise.all with timeout
+        ----------------------------*/
+
+        const promiseTimeout = (promise, ms) => {
+            return Promise.race([
+                promise,
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error("Document processing timeout")), ms)
+                )
+            ]);
+        };
+        try {
+            if (docp.length > 0) {
+                const data = await promiseTimeout(Promise.all(docp), 15000);
+
+                data.forEach(docdata => {
+                    try {
+                        if (Array.isArray(docdata)) {
+                            docdata.forEach(rdocdata =>
+                                FINALRESPONSE.SHIPPING_DOCUMENTS.push(rdocdata)
+                            );
+                        } else if (docdata) {
+                            FINALRESPONSE.SHIPPING_DOCUMENTS.push(docdata);
+                        }
+                    } catch (err) {
+                        console.error("Document parse error:", err.message);
+                    }
+                });
+            }
+        } catch (docError) {
+            console.error("Document processing failed:", docError.message);
+            FINALRESPONSE.ERRORS.push(docError.message);
+        }
+
+        return FINALRESPONSE;
+
+    } catch (ex) {
+        console.error("estes Ship Error:", ex?.response?.data || ex.message);
+
+        FINALRESPONSE.STATUS = 'Error';
+        if (ex?.response?.data) {
+            const error = ex.response.data;
+            if (error.messageStatus?.information) {
+                error.messageStatus.information.forEach((er) => {
+                    FINALRESPONSE.ERRORS.push(er.code + '-' + er.message)
+                });
+            }
+            else if (error?.messageStatus) {
+                FINALRESPONSE.ERRORS.push(ex.response.data.messageStatus?.message);
+            } else {
+                FINALRESPONSE.ERRORS.push(ex.response.data?.message);
+            }
+        } else {
+            FINALRESPONSE.ERRORS = [ex.message];
+        }
+
+
+
+        return FINALRESPONSE;
+    }
+};
+
+
+// Rate quote function
+async function GetESTESrates(request, url, FINALRESPONSE, chargeCodes) {
+    try {
+
+        const SLSS = request.SHIPMENT_LVL_SPECIAL_SERVICES;
+        const service = request.CARRIER_DETAILS?.SERVICE_CODE || request.CARRIER_DETAILS?.SERVICE_NAME;
+
+        const [datePart, timePart] = request.HEADER_INFO.SHIP_DATE.split('T');
+        const [paymentterms, paymentpayer] =
+            PAYMENT_MAP[request.CARRIER_DETAILS?.PAYMENT_TYPE] || ['Prepaid', 'Shipper'];
+        let ratereq = {};
+        ratereq['quoteRequest'] = {};
+        ratereq.quoteRequest['shipDate'] = datePart;
+        ratereq.quoteRequest['shipTime'] = timePart;
+        ratereq.quoteRequest['serviceLevels'] = ["LTL", "LTLTC"]
+
+
+        ratereq['payment'] = {};
+        ratereq.payment['account'] = request.CARRIER_DETAILS.SHIPPING_ACCOUNT;
+        ratereq.payment['payor'] = paymentpayer;
+        ratereq.payment['terms'] = paymentterms;
+
+        ratereq['commodity'] = {};
+
+        ratereq.commodity =
+        {
+            handlingUnits: request.PACKAGES.map(pkg => buildPackageItem(pkg, SLSS)) || []
+        },
+
+            // ---------- Shipper (Origin) ----------
+            ratereq.origin = {
+                name: request.SHIPPER?.COMPANY,
+                address: {
+                    stateProvince: request.SHIPPER?.STATE,
+                    city: request.SHIPPER?.CITY,
+                    phone: request.SHIPPER?.PHONE,
+                    address1: request.SHIPPER?.ADDRESS_LINE1,
+                    address2: request.SHIPPER?.ADDRESS_LINE2,
+                    postalCode: request.SHIPPER?.ZIPCODE,
+                    country: request.SHIPPER?.COUNTRY,
+                },
+                contact: {
+                    name: request.SHIPPER?.CONTACT,
+                    email: request.SHIPPER?.EMAIL,
+                },
+            };
+
+        // ---------- Destination ----------
+        ratereq.destination = {
+            name: request.SHIPTO?.COMPANY,
+            address: {
+                stateProvince: request.SHIPTO?.STATE,
+                city: request.SHIPTO?.CITY,
+                phone: request.SHIPTO?.PHONE,
+                address1: request.SHIPTO?.ADDRESS_LINE1,
+                address2: request.SHIPTO?.ADDRESS_LINE2,
+                postalCode: request.SHIPTO?.ZIPCODE,
+                country: request.SHIPTO?.COUNTRY,
+            },
+            contact: {
+                name: request.SHIPTO?.CONTACT,
+                email: request.SHIPTO?.EMAIL,
+            },
+        };
+
+
+
+        ratereq['accessorials'] = {}
+        ratereq.accessorials['codes'] = [];
+
+        if (reuse.isTrue(SLSS?.LIFT_GATE_PICKUP)) { ratereq.accessorials.codes.push('LGATEP') }
+        if (reuse.isTrue(SLSS?.LIFT_GATE_DELIVERY)) { ratereq.accessorials.codes.push('LGATE') }
+        if (reuse.isTrue(SLSS?.IN_BOND)) { ratereq.accessorials.codes.push('INB') }
+        if (reuse.isTrue(SLSS?.OVER_LENGTH)) { ratereq.accessorials.codes.push('LONG12') }
+        if (reuse.isTrue(SLSS?.DELIVERY_APPOINTMENT)) { ratereq.accessorials.codes.push('APT') }
+        if (SLSS?.SIGNATURE_OPTION_TYPE) { ratereq.accessorials.codes.push('HDSIG') }
+        if (reuse.isTrue(SLSS?.INSIDE_PICKUP)) { ratereq.accessorials.codes.push('INP') }
+        if (reuse.isTrue(SLSS?.INSIDE_DELIVERY)) { ratereq.accessorials.codes.push('INS') }
+        if (reuse.isTrue(SLSS?.HAZMAT)) { ratereq.accessorials.codes.push('HAZ') }
+        if (reuse.isTrue(SLSS?.RESIDENTIAL_PICKUP)) { ratereq.accessorials.codes.push('HPU') }
+        if (reuse.isTrue(SLSS?.RESIDENTIAL_DELIVERY)) { ratereq.accessorials.codes.push('HD') }
+        if (reuse.isTrue(SLSS?.LIMITED_ACCESS_PICKUP)) { ratereq.accessorials.codes.push('LADPU') }
+        if (reuse.isTrue(SLSS?.CONSTRUCTION_SITE_PICKUP)) { ratereq.accessorials.codes.push('CONSTP') }
+        if (reuse.isTrue(SLSS?.CONSTRUCTION_SITE_DELIVERY)) { ratereq.accessorials.codes.push('CONST') }
+        if (reuse.isTrue(SLSS?.DELIVERY_NOTIFICATION)) { ratereq.accessorials.codes.push('NCM') }
+        if (reuse.isTrue(SLSS?.SINGLE_SHIPMENT)) { ratereq.accessorials.codes.push('SSM') }
+        // console.log(JSON.stringify(ratereq));
+        // Emit the request object
+
+
+        console.log('ESTES Rate Request is')
+        console.log(JSON.stringify(ratereq))
+
+        const Rareres = await axios.post(url, ratereq, {
+            headers: {
+                'content-type': 'application/json',
+                'accept': 'application/json'
+
+            },
+        });
+
+
+        Rareres?.data?.data?.forEach((packelement) => {
+            if (!packelement.rateFound) return;
+
+            try {
+                if (service === packelement.serviceLevelId) {
+                    strRateQuote = packelement?.quoteId;
+                    const chargeItems = packelement?.chargeItems || [];
+
+                    let baseCharge = 0;
+                    let surchargeTotal = 0;
+
+                    chargeItems.forEach(item => {
+                        const amount = Number(item.charge) || 0;
+                        if (item.description === 'Minimum Charge') {
+                            baseCharge = amount;
+                        } else if (!item.description.startsWith('Discount')) {
+                            surchargeTotal += amount;
+                        }
+                    });
+
+                    const publishedFreight = baseCharge + surchargeTotal;
+                    const discountFreight = Number(packelement?.quoteRate?.totalCharges) || 0;
+
+                    FINALRESPONSE.CHARGE_DETAILS.push(reuse.ShipRateRes('Discounted Freight', discountFreight, 'USD', 'DISC'));
+                    FINALRESPONSE.CHARGE_DETAILS.push(reuse.ShipRateRes('Published Freight', publishedFreight, 'USD', 'LIST'));
+
+                    packelement?.quoteRate?.ratedAccessorials?.forEach(acc => {
+                        FINALRESPONSE.CHARGE_DETAILS.push(reuse.ShipSurRateRes(acc.description, parseFloat(acc.charge), 'USD', acc.code, 'ESTES', chargeCodes));
+                    });
+
+                }
+
+            } catch (ex) {
+                console.error('ESTES rate parse error:', ex);
+            }
+        });
+        return strRateQuote;
+    } catch (error) {
+        console.error('Rate quote error:', error.response?.data || error.message);
+        //throw error;
+    }
+}
+
+const buildAddress = (data) => {
+    // Extract and validate postal code
+    let postalCode = data.ZIPCODE || '';
+    let fiveDigitZip = '';
+    if (data.COUNTRY?.toUpperCase() === 'US') {
+        fiveDigitZip = postalCode.replace(/\D/g, '').substring(0, 5);
+    }
+    return {
+        name: data.COMPANY,
+        address1: data.ADDRESS_LINE1,
+        address2: data.ADDRESS_LINE2,
+        city: data.CITY,
+        stateProvince: data.STATE,
+        postalCode: fiveDigitZip,
+        country: reuse.getCountry3(data.COUNTRY),
+        contact: {
+            phone: reuse.formatPhoneTo10Digits(data.PHONE),
+            email: data.EMAIL
+        },
+    };
+};
+
+const buildPackageItem = (pkg = {}, SLSS = {}) => {
+    const PLSS = pkg?.PACKAGE_LVL_SPECIAL_SERVICES;
+    const dimensionParts = pkg?.DIMENSION
+        ? pkg.DIMENSION.toUpperCase().split('X').map(Number)
+        : [];
+
+    const lineItems = (Array.isArray(pkg.ITEM_INFO) && pkg.ITEM_INFO.length > 0
+        ? pkg.ITEM_INFO
+        : [{
+            description: pkg.DESCRIPTION || 'DUMMY ITEM',
+            weight: Math.floor(Number(pkg.WEIGHT || 1)),
+            pieces: Number(pkg.QUANTITY || 1),
+            packagingType: pkg.PACKING_TYPE || 'BOX',
+
+            classification: String(pkg.LTL_CLASS || '50'),
+            ...(reuse.isTrue(SLSS?.HAZMAT) && {
+                hazardous: true,
+                hazardousDescription: PLSS.HAZMAT.PROPER_SHIPPING_NAME || "UN 1090, Acetone, 3, PG II",
+                hazardousDetails: {
+                    weight: PLSS.HAZMAT.WEIGHT || 45,
+                    class: PLSS.HAZMAT.HAZ_CLASS || "3",
+                    unnaNumber: PLSS.HAZMAT.UNID_NUMBER || "1005",
+                    propername: PLSS.HAZMAT.PROPER_SHIPPING_NAME || "Anhydrous ammonia",
+                    technicalName: PLSS.HAZMAT.TECHNICAL_NAME || "NH3",
+                    packingGroup: PLSS.HAZMAT.PACKAGING_GROUP_TYPE || "2",
+                    contractNumber: PLSS.HAZMAT.EMERGENCY_CONTACT || "54321"
+                }
+            })
+        }]
+    ).map(item => ({
+        description: item.DESCRIPTION || 'test',
+        weight: Math.floor(Number(item.ITEM_WEIGHT || pkg.WEIGHT || 1)),
+        pieces: Number(item.QUANTITY || 1),
+        packagingType: item.PACKING_TYPE || 'BOX',
+        hazardous: false,
+        classification: String(item.LTL_CLASS || '50'),
+        ...(reuse.isTrue(SLSS?.HAZMAT) && {
+            hazardous: true,
+            hazardousDescription: PLSS.HAZMAT.PROPER_SHIPPING_NAME || "UN 1090, Acetone, 3, PG II",
+            hazardousDetails: {
+                weight: PLSS.HAZMAT.WEIGHT || 45,
+                class: PLSS.HAZMAT.HAZ_CLASS || "3",
+                unnaNumber: PLSS.HAZMAT.UNID_NUMBER || "1005",
+                propername: PLSS.HAZMAT.PROPER_SHIPPING_NAME || "Anhydrous ammonia",
+                technicalName: PLSS.HAZMAT.TECHNICAL_NAME || "NH3",
+                packingGroup: PLSS.HAZMAT.PACKAGING_GROUP_TYPE || "2",
+                contractNumber: PLSS.HAZMAT.EMERGENCY_CONTACT || "54321"
+
+            }
+        })
+    }));
+
+
+
+    return {
+        count: parseInt(pkg.QUANTITY || 1),
+        type: (pkg?.PACKING_TYPE && packagingTypeCodes(pkg.PACKING_TYPE)) || 'BAG',
+        weight: Math.floor(Number(pkg.WEIGHT)),
+        weightUnit: getBOLWeightUnit(pkg?.WEIGHT_UNITS),
+        ...(dimensionParts.length === 3 && {
+            length: dimensionParts[0],
+            width: dimensionParts[1],
+            height: dimensionParts[2],
+            dimensionsUnit: getBOLDimensionUnit(pkg?.DIMENSION_UNITS)
+        }),
+        // isHazmat: false,
+        lineItems
+    };
+};
+const PAYMENT_MAP = Object.freeze({
+    Sender: ['Prepaid', 'Shipper'],
+    Recipient: ['Collect', 'Consignee'],
+    Collect: ['Collect', 'Consignee'],
+    ThirdParty: ['Third Party', 'Third Party']
+});
+
+const getBOLWeightUnit = (unit = '') =>
+    /^l/i.test(unit) ? 'Pounds' :
+        /^k/i.test(unit) ? 'Kilograms' :
+            'Pounds';
+
+const getRateWeightUnit = (unit = '') =>
+    /^l/i.test(unit) ? 'LBS' :
+        /^k/i.test(unit) ? 'KGS' :
+            'Pounds';
+const getRateDimensionUnit = (unit = '') =>
+    /^c/i.test(unit) ? 'CM' :
+        /^i/i.test(unit) ? 'IN' :
+            'Inches';
+
+const getBOLDimensionUnit = (unit = '') =>
+    /^c/i.test(unit) ? 'Centimeters' :
+        /^i/i.test(unit) ? 'Inches' :
+            'Inches';
+
+
+function packagingTypeCodes(name) {
+    const packagingMap = {
+        BAG: 'BAG',
+        BALE: 'BAL',
+        BARREL: 'BBL',
+        BASKET: 'BSK',
+        BOX: 'BOX',
+        BUCKET: 'BXT',
+        BUNDLE: 'BDL',
+        CAN: 'CAN',
+        CARTON: 'CTN',
+        CASE: 'CAS',
+        COIL: 'COL',
+        CRATE: 'CRT',
+        CYLINDER: 'CYL',
+        DRUM: 'DRM',
+        ENVELOPE: 'ENV',
+        KIT: 'KIT',
+        LOOSE: 'LSE',
+        PACKAGE: 'PKG',
+        PAIL: 'PAL',
+        PALLET: 'PAT',
+        PIECE: 'PCS',
+        REEL: 'REL',
+        ROLL: 'ROL',
+        SKID: 'SKD',
+        SPOOL: 'SPL',
+        TANK: 'TNK',
+        TOTE: 'TBN',
+        TUBE: 'TBE',
+        UNIT: 'UNT'
+    };
+
+    return packagingMap[name?.toUpperCase()] || name;
+}

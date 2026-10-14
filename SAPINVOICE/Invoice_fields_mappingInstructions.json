@@ -1,0 +1,162 @@
+{
+  "DHL": {
+    "carrierInvoiceID": {
+      "fieldname": "Invoice Number",
+      "rowtype": "I"
+    },
+    "invoiceDate": {
+      "fieldname": "Invoice Date",
+      "format": "yyyymmdd",
+      "rowtype": "I"
+    },
+    "grossAmount": {
+      "fieldname": "Total amount (excl. VAT)",
+      "rowtype": "I"
+    },
+    "grossAmountCurrency": {
+      "fieldname": "Currency",
+      "rowtype": "I"
+    },
+    "orderingPartyLbnId": "10020004830",
+    "carrierLbnId": "10020004830",
+    "baseDocumentType": "1122",
+    "purchasingParty": "raju",
+    "billFromParty": "dhl",
+    "senderSystemId": "QM7_910",
+    "totalTaxAmount": {
+      "fieldname": "Total Tax",
+      "rowtype": "I"
+    },
+    "taxAmountCurrency": {
+      "fieldname": "Currency",
+      "rowtype": "I"
+    },
+    "items": {
+      "rowtype": "S",
+      "grossAmount": {
+        "fieldname": "Total amount (excl. VAT)"
+      },
+      "grossAmountCurrency": {
+        "fieldname": "Currency"
+      },
+      "freightDocumentID": "10020004830",
+      "transportationItemID": "10",
+      "transportationStageID": "20",
+      "pricingElements": [
+        {
+          "lbnChargeCode": "EXPR_FREIGHT",
+          "rateAmount": "Weight Charge",
+          "finalAmount": "Weight Charge"
+        },
+        {
+          "lbnChargeCode": {
+            "fieldname": "XC1 Name",
+            "default": "FF"
+          },
+          "rateAmount": "XC1 Charge",
+          "finalAmount": "XC1 Charge"
+        },
+        {
+          "lbnChargeCode": {
+            "fieldname": "XC2 Name",
+            "default": "NN"
+          },
+          "rateAmount": "XC2 Charge",
+          "finalAmount": "XC2 Charge"
+        }
+      ]
+    }
+  },
+  "Carousel": {
+    "carrierInvoiceID": "Invoice Number",
+    "invoiceDate": {
+      "fieldname": "Invoice Date",
+      "format": "dd.mm.yyyy"
+    },
+    "grossAmount": "Amount Billed",
+    "grossAmountCurrency": "Currency",
+    "orderingPartyLbnId": "10020004830",
+    "carrierLbnId": "10020004830",
+    "baseDocumentType": "1122",
+    "totalTaxAmount": "Total Shipment VAT Amount",
+    "taxAmountCurrency": "Currency",
+    "items": {
+      "grossAmount": "Amount Billed",
+      "grossAmountCurrency": "Currency",
+      "freightDocumentID": "Shipment Number",
+      "transportationItemID": "10",
+      "transportationStageID": "20",
+      "pricingElements": [
+        {
+          "lbnChargeCode": "FREIGHT",
+          "rateAmount": "Freight Amount",
+          "finalAmount": "Freight Amount"
+        },
+        {
+          "lbnChargeCode": "Accessorial Charge Code1",
+          "rateAmount": "Accessorial Charge Amount1",
+          "finalAmount": "Accessorial Charge Amount1"
+        },
+        {
+          "lbnChargeCode": "Accessorial Charge Code2",
+          "rateAmount": "Accessorial Charge Amount2",
+          "finalAmount": "Accessorial Charge Amount2"
+        }
+      ]
+    }
+  },
+  "Chronopost": {
+    "carrierInvoiceID": "NUM_FACT",
+    "invoiceDate": {
+      "fieldname": "DATE_LT",
+      "format": "ddmmyy"
+    },
+    "grossAmount": "MONTANT_HT",
+    "grossAmountCurrency": "EUR",
+    "orderingPartyLbnId": "10020004830",
+    "carrierLbnId": "10020004830",
+    "baseDocumentType": "1122",
+    "items": {
+      "grossAmount": "MONTANT_HT",
+      "grossAmountCurrency": "EUR",
+      "freightDocumentID": "NUMERO_LT",
+      "transportationItemID": "10",
+      "transportationStageID": "20",
+      "pricingElements": [
+        {
+          "lbnChargeCode": "SERVICE",
+          "rateAmount": "MONTANT_HT",
+          "finalAmount": "MONTANT_HT"
+        }
+      ]
+    }
+  },
+  "TeamGlobal": {
+    "carrierInvoiceID": "invoiceno",
+    "invoiceDate": "deliverydate",
+    "grossAmount": "amount",
+    "grossAmountCurrency": "EUR",
+    "orderingPartyLbnId": "10020004830",
+    "carrierLbnId": "10020004830",
+    "baseDocumentType": "1122",
+    "items": {
+      "grossAmount": "amount",
+      "grossAmountCurrency": "EUR",
+      "freightDocumentID": "externalreference",
+      "transportationItemID": "10",
+      "transportationStageID": "20",
+      "pricingElements": [
+        {
+          "lbnChargeCode": "shipmenttype",
+          "rateAmount": "amount",
+          "finalAmount": "amount"
+        },
+        {
+          "lbnChargeCode": "surchargeperc",
+          "rateAmount": "surcharges",
+          "finalAmount": "surcharges"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,120 @@
+const axios = require('axios');
+const reuse = require('../../Reuse/utilityfunctions.js');
+
+module.exports = async function rlRateAll(request) {
+
+    let accountNumber = request.CARRIER_DETAILS.SHIPPING_ACCOUNT;
+    const chargeCodes = request?.chargeCodeData;
+    let rateShopResponse = [];
+    try {
+
+
+        const rateurl = request.CARRIER_DETAILS.RATEURL || process.env.RL_RATE;
+
+        let rateReq = {};
+        rateReq['RateQuote'] = {}
+        rateReq.RateQuote["CODAmount"] = 0;
+        rateReq.RateQuote["DeclaredValue"] = 0;
+        //rateReq.RateQuote["PickupDate"] = 0;
+
+        //-> Origin
+        rateReq.RateQuote['Origin'] = {}
+        rateReq.RateQuote.Origin['City'] = request.SHIPPER.CITY;
+        rateReq.RateQuote.Origin['StateOrProvince'] = request.SHIPPER.STATE;
+        rateReq.RateQuote.Origin['ZipOrPostalCode'] = request.SHIPPER.ZIPCODE;
+        rateReq.RateQuote.Origin['CountryCode'] = reuse.getCountry3(request.SHIPPER.COUNTRY);
+        //->Destination
+        rateReq.RateQuote['Destination'] = {}
+        rateReq.RateQuote.Destination['City'] = request.SHIPTO.CITY;
+        rateReq.RateQuote.Destination['StateOrProvince'] = request.SHIPTO.STATE;
+        rateReq.RateQuote.Destination['ZipOrPostalCode'] = request.SHIPTO.ZIPCODE;
+        rateReq.RateQuote.Destination['CountryCode'] = reuse.getCountry3(request.SHIPTO.COUNTRY);
+
+        rateReq.RateQuote['Items'] = []
+        request.PACKAGES.forEach(element => {
+            xlineItem = {}
+            xlineItem['Class'] = element.LTL_CLASS || 50;
+            //-----> dimensions     
+            if (element?.DIMENSION) {
+
+                dims = element.DIMENSION.toUpperCase().split('X');
+                xlineItem['Length'] = Number(dims[0])
+                xlineItem['Height'] = Number(dims[2])
+                xlineItem['Width'] = Number(dims[1])
+
+            }
+            xlineItem['Weight'] = Math.floor(Number(element.WEIGHT));
+
+
+            rateReq.RateQuote.Items.push(xlineItem)
+
+        });
+
+        rateReq.RateQuote['AdditionalServices'] = [];
+        const SLSS = request?.SHIPMENT_LVL_SPECIAL_SERVICES;
+        if (reuse.isTrue(SLSS?.INSIDE_PICKUP)) { rateReq.RateQuote.AdditionalServices.push('InsidePickup') }
+        if (reuse.isTrue(SLSS?.INSIDE_DELIVERY)) { rateReq.RateQuote.AdditionalServices.push('InsideDelivery') }
+        if (reuse.isTrue(SLSS?.LIMITED_ACCESS_PICKUP)) { rateReq.RateQuote.AdditionalServices.push('LimitedAccessPickup') }
+        if (reuse.isTrue(SLSS?.LIMITED_ACCESS_DELIVERY)) { rateReq.RateQuote.AdditionalServices.push('LimitedAccessDelivery') }
+        if (reuse.isTrue(SLSS?.LIFT_GATE_PICKUP)) { rateReq.RateQuote.AdditionalServices.push('OriginLiftgate') }
+        if (reuse.isTrue(SLSS?.LIFT_GATE_DELIVERY)) { rateReq.RateQuote.AdditionalServices.push('DestinationLiftgate') }
+        if (reuse.isTrue(SLSS?.DELIVERY_APPOINTMENT)) { rateReq.RateQuote.AdditionalServices.push('DeliveryAppointment') }
+        if (reuse.isTrue(SLSS?.SORT_AND_SEGREGATE)) { rateReq.RateQuote.AdditionalServices.push('SortandSegregate') }
+        if (reuse.isTrue(SLSS?.HAZMAT)) { rateReq.RateQuote.AdditionalServices.push('Hazmat') }
+        if (reuse.isTrue(SLSS?.PROTECT_FROM_FREEZING)) { rateReq.RateQuote.AdditionalServices.push('Freezable') }
+        if (reuse.isTrue(SLSS?.OVER_LENGTH)) {
+            rateReq.RateQuote.AdditionalServices.push('Overdimension')
+            rateReq.RateQuote['OverDimensions'] = [{
+                Pieces: 1,
+                Inches: 120
+            }];
+
+        }
+        console.log('RL Rate Request is')
+        console.log(JSON.stringify(rateReq))
+
+        let sres = await axios.post(rateurl, rateReq,
+            {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'apiKey': request.CARRIER_DETAILS?.ACCESS_KEY
+                },
+            },
+        );
+        console.log('RL Rate Response is ..:', JSON.stringify(sres.data));
+        let stdcharge = 0;
+        sres.data.RateQuote.ServiceLevels.forEach(element => {
+            try {
+                let rateShop = {}
+                let charge = parseFloat(element.NetCharge.replace('$', '').replace(',', '')) + (stdcharge);
+                let ETA = reuse.addTransitDays(element.ServiceDays, sres.data.RateQuote.PickupDate);
+                rateShop = reuse.handleRateRes('RL', accountNumber, element.Code, `RL ${element.Name}`, charge, charge, ETA, element.ServiceDays, 'USD', request.HEADER_INFO.ShippingPoint, request.HEADER_INFO.SalesOrderDate);
+                try {
+                    rateShop.CHARGE_DETAILS = [];
+                    sres.data.RateQuote.Charges.forEach(element => {
+                        const type = element.Type?.toUpperCase().trim();
+                        // Skip if Type is 
+                        if (!type || type === "NET" || type === "DISCNT" || type === "MINIMUM") {
+                            return; // skip this element
+                        }
+                        // Change type to BASE if it's DISCNF
+                        const mappedType = (type === "DISCNF") ? "BASE" : type;
+                        rateShop.CHARGE_DETAILS.push(
+                            reuse.handlesurCharRes('RL', mappedType, element.Title, element.Amount.replace('$', '').replace(',', ''), 'USD', chargeCodes)
+                        );
+                    });
+                } catch (error) {
+                    console.log(error.message)
+                }
+                rateShopResponse.push(rateShop);
+            } catch (ex) { }
+
+        });
+        return { status: 'Success', rates: rateShopResponse };
+
+
+    } catch (ex) {
+        returnreuse.handleErrorRes('RL', ex);
+    }
+
+};

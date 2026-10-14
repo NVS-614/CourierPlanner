@@ -1,0 +1,166 @@
+const axios = require('axios');
+const reuse = require('../../Reuse/utilityfunctions.js');
+
+module.exports = async function saiaRateAll(request) {
+
+    let accountNumber = request.CARRIER_DETAILS.SHIPPING_ACCOUNT;
+    const chargeCodes = request?.chargeCodeData;
+    let rateShopResponse = [];
+
+
+    try {
+        let date_ob = new Date();
+        let date = ("0" + date_ob.getDate()).slice(-2);
+        let month = ("0" + (date_ob.getMonth() + 1)).slice(-2);
+        let year = date_ob.getFullYear();
+        let weightunit = 'LBS', currency = 'USD', dimUnits = 'IN';
+        const [datePart, timePart] = request.HEADER_INFO.SHIP_DATE.split('T');
+        let rateReq = {};
+        const rateurl = request.CARRIER_DETAILS.RATEURL || process.env.SAIA_RATE;
+        let paymentterms = 'Prepaid';
+        let paymentpayer = 'Shipper';
+        if (request.CARRIER_DETAILS.PAYMENT_TYPE == 'Sender') { paymentterms = 'Prepaid', paymentpayer = 'Shipper' }
+        else if (request.CARRIER_DETAILS.PAYMENT_TYPE == 'Recipient') { paymentterms = 'Collect', paymentpayer = 'Consignee' }
+        else if (request.CARRIER_DETAILS.PAYMENT_TYPE == 'ThirdParty') { paymentterms = 'Third Party', paymentpayer = 'Third Party' }
+        else if (request.CARRIER_DETAILS.PAYMENT_TYPE == 'Collect') { paymentterms = 'Collect', paymentpayer = 'Consignee' }
+
+        rateReq['payer'] = paymentpayer,
+            rateReq['pickUpDate'] = datePart,
+            //-> Origin
+            rateReq['origin'] = {}
+        rateReq.origin['city'] = request.SHIPPER.CITY;
+        rateReq.origin['state'] = request.SHIPPER.STATE;
+        rateReq.origin['zipcode'] = request.SHIPPER.ZIPCODE;
+        //->Destination
+        rateReq['destination'] = {}
+        rateReq.destination['city'] = request.SHIPTO.CITY;
+        rateReq.destination['state'] = request.SHIPTO.STATE;
+        rateReq.destination['zipcode'] = request.SHIPTO.ZIPCODE;
+        rateReq['weightUnits'] = 'LBS',
+            rateReq['measurementUnit'] = 'IN',
+            rateReq['details'] = []
+        let excessiveLengthTotalInches = null
+        request.PACKAGES.forEach(element => {
+            xlineItem = {}
+            xlineItem['class'] = element.LTL_CLASS || 50;
+            xlineItem['units'] = element.ItemsInfo?.length || Number(element?.Quantity) || 1;
+            xlineItem['units'] = (Array.isArray(element?.ItemsInfo) && element.ItemsInfo.length > 0
+                ? element.ItemsInfo.length
+                : Number(element?.Quantity)) || 1;
+
+            //-----> dimensions     
+            if (element?.DIMENSION) {
+                dims = element.DIMENSION.toUpperCase().split('X');
+                excessiveLengthTotalInches = Number(dims[0])
+                xlineItem['length'] = Number(dims[0])
+                xlineItem['height'] = Number(dims[2])
+                xlineItem['width'] = Number(dims[1])
+
+            }
+            xlineItem['weight'] = Math.floor(Number(element.WEIGHT));
+
+
+            rateReq.details.push(xlineItem)
+
+        });
+
+        rateReq['accessorials'] = {};
+        rateReq.accessorials['code'] = [];
+        const SLSS = request?.SHIPMENT_LVL_SPECIAL_SERVICES;
+        if (reuse.isTrue(SLSS?.INSIDE_PICKUP)) { rateReq.accessorials.code.push('InsidePickup') }
+        if (reuse.isTrue(SLSS?.INSIDE_DELIVERY)) { rateReq.accessorials.code.push('InsideDelivery') }
+        if (reuse.isTrue(SLSS?.LIMITED_ACCESS_PICKUP)) { rateReq.accessorials.code.push('LimitedAccessLocationPU') }
+        if (reuse.isTrue(SLSS?.LIMITED_ACCESS_DELIVERY)) { rateReq.accessorials.code.push('LimitedAccessLocation') }
+        if (reuse.isTrue(SLSS?.LIFT_GATE_PICKUP)) { rateReq.accessorials.code.push('LiftgateServicePU') }
+        if (reuse.isTrue(SLSS?.LIFT_GATE_DELIVERY)) { rateReq.accessorials.code.push('LiftgateService') }
+        if (reuse.isTrue(SLSS?.DELIVERY_APPOINTMENT)) { rateReq.accessorials.code.push('ArrivalNotice/Appointment') }
+        if (reuse.isTrue(SLSS?.SORT_AND_SEGREGATE)) { rateReq.accessorials.code.push('Sorting/Segregating') }
+        if (reuse.isTrue(SLSS?.HAZMAT)) { rateReq.accessorials.code.push('Hazardous') }
+        if (reuse.isTrue(SLSS?.PROTECT_FROM_FREEZING)) { rateReq.accessorials.code.push('ProtectionFromFreezing') }
+        if (reuse.isTrue(SLSS?.OVER_LENGTH)) {
+            rateReq.accessorials.code.push('ExcessiveLength')
+            rateReq.accessorials.excessiveLengthTotalInches = excessiveLengthTotalInches
+
+
+        }
+        console.log('SAIA Rate Request is')
+        console.log(JSON.stringify(rateReq))
+
+        let sres = await axios.post(rateurl, rateReq,
+            {
+                headers: {
+                    'Content-Type': 'application/json',
+                    accept: 'application/json',
+                    'RQ-Key': request.CARRIER_DETAILS?.ACCESS_KEY || request.CARRIER_DETAILS?.RATE_KEY,
+                    Authorization: 'Basic ' + Buffer.from(`${request.CARRIER_DETAILS.USERID}:${request.CARRIER_DETAILS.PASSWORD}`).toString('base64')
+                },
+            },
+        );
+        console.log('SAIA Rate Response is ..:', JSON.stringify(sres.data));
+        try {
+            const element = sres?.data;
+            const ETA = element?.estimatedDeliveryDate;
+            const accessorials = element?.rateAccessorials?.accessorials || [];
+            // helper to attach CHARGE_DETAILS
+            const attachSURCHARGES = (rateShop) => {
+                rateShop.CHARGE_DETAILS = accessorials.map(acc =>
+                    reuse.handlesurCharRes('SAIA', acc.internalCode, acc.description, acc.amount, 'USD', chargeCodes)
+                );
+                return rateShop;
+            };
+            // ---------- Standard ----------
+            let charge = element?.rateDetails?.totalInvoice;
+            let rateShop = reuse.handleRateRes('SAIA', accountNumber, 'STD', 'Standard', charge, charge, ETA, element?.standardServiceDays, 'USD', request.HEADER_INFO.ShippingPoint, request.HEADER_INFO.SalesOrderDate);
+            rateShopResponse.push(attachSURCHARGES(rateShop));
+            // ---------- GSS Services ----------
+            const rd = element?.rateDetails;
+            if (rd?.isGssCompliant) {
+                if (rd?.totalInvoiceWithGss5) {
+                    charge = rd.totalInvoiceWithGss5;
+                    rateShop = reuse.handleRateRes('SAIA', accountNumber, 'GSS5', 'Saia Guaranteed 5', charge, charge, ETA, element?.standardServiceDays, 'USD', request.HEADER_INFO.ShippingPoint, request.HEADER_INFO.SalesOrderDate);
+                    rateShopResponse.push(attachSURCHARGES(rateShop));
+                }
+                if (rd?.totalInvoiceWithGss12) {
+                    charge = rd.totalInvoiceWithGss12;
+                    rateShop = reuse.handleRateRes('SAIA', accountNumber, 'GSS12', 'Saia Guaranteed 12', charge, charge, ETA, element?.standardServiceDays, 'USD', request.HEADER_INFO.ShippingPoint, request.HEADER_INFO.SalesOrderDate);
+                    rateShopResponse.push(attachSURCHARGES(rateShop, charge));
+                }
+            }
+        } catch (ex) {
+            console.error('SAIA rate shop error:', ex.message);
+        }
+        return { status: 'Success', rates: rateShopResponse };
+
+    } catch (ex) {
+        return handleErrorRes('SAIA', ex);
+    }
+};
+function handleErrorRes(CARRIER, error, SHIPPOINT, SalesOrderDate) {
+    console.log(JSON.stringify(error?.response?.data) || error?.message)
+    let Errors = [];
+    const base = {
+        CARRIER,
+        SHIP_POINT: SHIPPOINT,
+        SALES_ORDER_DATE: SalesOrderDate
+    };
+    let messages = null
+    if (error?.response?.data?.errors) {
+        messages = error.response.data.errors.flatMap(err => Object.values(err).map(field => field.message));
+    }
+    else if (error?.response?.data?.message) {
+        messages = error.response.data.message;
+    } else {
+        messages = error.message
+    }
+    Errors.push({
+        ...base,
+        STATUSCODE: '',
+        MESSAGE: messages
+    });
+
+
+    return {
+        status: 'Error',
+        message: Errors
+    };
+}

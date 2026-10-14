@@ -1,0 +1,8 @@
+applications:
+- name: shipapiv3
+  memory: 2G
+  disk_quota: 2G
+  docker:
+    image: signode/shipapiv3:v7
+  env:
+    NODE_ENV: production
