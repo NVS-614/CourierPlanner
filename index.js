@@ -66,7 +66,8 @@ app.get('/api-docs/login', ...swaggerGoogleAuth.sessionMiddleware, swaggerGoogle
 app.use(
   '/api-docs',
   ...swaggerGoogleAuth.sessionMiddleware,
-  swaggerGoogleAuth.requireAuth,
+  // Temporarily allow public access to Swagger; restore this middleware to require Google sign-in.
+  // swaggerGoogleAuth.requireAuth,
   swaggerUi.serve,
   swaggerUi.setup(swaggerDocs)
 );

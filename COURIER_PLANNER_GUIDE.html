@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Application-level architecture and operations guide for the CourierPlanner shipping integration service.">
+    <title>CourierPlanner Solution Guide</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        color: #172033;
+        background: #f3f6fb;
+        line-height: 1.6;
+      }
+
+      body {
+        max-width: 1000px;
+        margin: 0 auto;
+        padding: 2rem 1.25rem;
+      }
+
+      main {
+        padding: 2rem;
+        background: #fff;
+        border: 1px solid #dce3ed;
+        border-radius: 12px;
+        box-shadow: 0 8px 30px rgb(23 32 51 / 6%);
+      }
+
+      h1, h2, h3 {
+        line-height: 1.25;
+      }
+
+      h2 {
+        margin-top: 2rem;
+        padding-bottom: 0.35rem;
+        border-bottom: 1px solid #e6ebf2;
+      }
+
+      a {
+        color: #175ea8;
+      }
+
+      code {
+        padding: 0.12rem 0.35rem;
+        background: #eef2f8;
+        border-radius: 4px;
+        overflow-wrap: anywhere;
+      }
+
+      pre {
+        overflow-x: auto;
+        padding: 1rem;
+        color: #f6f8fa;
+        background: #202938;
+        border-radius: 8px;
+      }
+
+      pre code {
+        padding: 0;
+        color: inherit;
+        background: transparent;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 1rem 0;
+      }
+
+      th, td {
+        padding: 0.65rem;
+        border: 1px solid #dce3ed;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        background: #eef2f8;
+      }
+
+      .note, .warning {
+        padding: 1rem;
+        border-left: 4px solid #2871b8;
+        background: #edf6ff;
+      }
+
+      .warning {
+        border-left-color: #c87900;
+        background: #fff6e5;
+      }
+
+      .toc {
+        padding: 1rem 1.25rem;
+        background: #f6f8fb;
+        border-radius: 8px;
+      }
+
+      .toc ul {
+        columns: 2;
+        margin-bottom: 0;
+      }
+
+      @media (max-width: 650px) {
+        main {
+          padding: 1.25rem;
+        }
+
+        .toc ul {
+          columns: 1;
+        }
+
+        table {
+          font-size: 0.92rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>CourierPlanner Solution Guide</h1>
+        <p>
+          Application-level reference for the CourierPlanner repository. It
+          maps the runtime, API, carrier integrations, persistence, SAP/EDI and
+          document workflows, background processing, configuration, and
+          deployment entry points. Use it as a starting point and consult the
+          referenced source when changing behavior.
+        </p>
+      </header>
+
+      <nav class="toc" aria-label="Table of contents">
+        <strong>On this page</strong>
+        <ul>
+          <li><a href="#overview">What this service does</a></li>
+          <li><a href="#navigation">Quick navigation</a></li>
+          <li><a href="#runtime">Runtime and HTTP application</a></li>
+          <li><a href="#flow">Request and carrier flow</a></li>
+          <li><a href="#data">Data and shared services</a></li>
+          <li><a href="#integrations">SAP, EDI, documents, tracking</a></li>
+          <li><a href="#jobs">Background processing</a></li>
+          <li><a href="#configuration">Configuration and secrets</a></li>
+          <li><a href="#deployment">Deployment and operations</a></li>
+          <li><a href="#development">Development and verification</a></li>
+          <li><a href="#maintenance">Maintenance checklist</a></li>
+        </ul>
+      </nav>
+
+      <section id="overview">
+        <h2>1. What this service does</h2>
+        <p>
+          CourierPlanner is a Node.js and Express shipping integration service.
+          Its primary API accepts shipping-related requests, routes supported
+          operations to carrier integrations, and returns normalized
+          responses. Supporting code provides rating, tracking, address
+          validation, shipment persistence, SAP-facing modules, EDI
+          generation, document handling, and scheduled/background jobs.
+        </p>
+        <p>The main web application starts at <code>index.js</code>. A typical API request follows:</p>
+        <pre><code>HTTP request
+  -> global origin/CORS and body parsing middleware
+  -> mounted route
+  -> controller
+  -> carrier factory / carrier implementation or shared service
+  -> optional database, document, or tracking work
+  -> formatted HTTP response</code></pre>
+        <p class="note">
+          Not every folder is an endpoint mounted by the main Express app.
+          Some SAP, EDI, and job modules have their own handlers or startup
+          logic; verify their invocation and deployment path before assuming
+          they are reachable through <code>index.js</code>.
+        </p>
+      </section>
+
+      <section id="navigation">
+        <h2>2. Quick navigation</h2>
+        <table>
+          <thead><tr><th>Area</th><th>Location</th><th>Role</th></tr></thead>
+          <tbody>
+            <tr><td>Web entry point</td><td><code>index.js</code></td><td>Loads configuration and middleware, mounts routes, starts Express</td></tr>
+            <tr><td>API definitions</td><td><code>routes/</code></td><td>Route declarations and request middleware</td></tr>
+            <tr><td>Business logic</td><td><code>controllers/</code></td><td>Validates and coordinates shipping operations</td></tr>
+            <tr><td>Carrier integrations</td><td><code>carriers/</code></td><td>Carrier-specific API, credential, label, rate, and tracking code</td></tr>
+            <tr><td>Carrier selection</td><td><code>factories/</code></td><td>Discovers and selects carrier implementations</td></tr>
+            <tr><td>Database access</td><td><code>database/</code></td><td>PostgreSQL connection, lookups, persistence</td></tr>
+            <tr><td>Shared helpers</td><td><code>Reuse/</code>, <code>generic/</code>, <code>lib/</code>, <code>utils/</code></td><td>Common API, transport, document, response, and logging helpers</td></tr>
+            <tr><td>SAP</td><td><code>SAPSHIP/</code>, <code>SAPRATE/</code>, <code>SAPTRACK/</code>, <code>SAPINVOICE/</code></td><td>SAP TMS shipments, rates, tracking, and invoice events</td></tr>
+            <tr><td>EDI</td><td><code>edi/</code></td><td>X12 message handling and generation</td></tr>
+            <tr><td>Documents</td><td><code>ShippingDocuments/</code></td><td>Shipping document helpers and transformations</td></tr>
+            <tr><td>Jobs</td><td><code>jobs/</code>, <code>TRACKING/</code></td><td>Scheduled or batch processing</td></tr>
+            <tr><td>API docs</td><td><code>swagger.js</code>, <code>/api-docs</code></td><td>Swagger specification and UI</td></tr>
+            <tr><td>Deployment</td><td><code>package.json</code>, <code>dockerfile</code>, <code>Procfile</code>, <code>manifest.yml</code></td><td>Runtime scripts, container, process, and deployment metadata</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="runtime">
+        <h2>3. Runtime and HTTP application</h2>
+        <h3>Starting the service</h3>
+        <ul>
+          <li>Runtime: Node.js 20 as declared in <code>package.json</code>.</li>
+          <li>Entry point: <code>index.js</code>; local command: <code>npm start</code>.</li>
+          <li>Port: <code>PORT</code> environment variable, falling back to <code>5001</code>.</li>
+          <li>Swagger UI: <code>/api-docs</code>.</li>
+        </ul>
+        <h3>Middleware and request handling</h3>
+        <p>
+          The entry point applies origin checks and CORS, and configures XML,
+          JSON, and URL-encoded body parsing. XML supports SAP-facing
+          integrations. JSON and URL-encoded bodies have a configured 50 MB
+          limit; XML parsing is limited to 1 MB. A final Express error handler
+          logs errors and returns a JSON error response.
+        </p>
+        <p>
+          The origin check allows the Pack Planner origin and localhost
+          development origins. Requests without an <code>Origin</code> header
+          are not rejected by that origin-check middleware; CORS behavior is
+          separately configured. Review both controls before changing
+          cross-origin behavior.
+        </p>
+        <h3>Main mounted API paths</h3>
+        <p>
+          These are mount points in <code>index.js</code>; consult Swagger and
+          the route files for concrete methods, paths, and payload schemas.
+        </p>
+        <table>
+          <thead><tr><th>Mount path</th><th>Route source / domain</th></tr></thead>
+          <tbody>
+            <tr><td><code>/api/getshipdata</code></td><td><code>routes/getshipdata.route.js</code></td></tr>
+            <tr><td><code>/api/addressvalidation</code></td><td><code>routes/addressvalidate.route.js</code></td></tr>
+            <tr><td><code>/api/return</code></td><td><code>routes/return.route.js</code></td></tr>
+            <tr><td><code>/api/ship</code></td><td><code>routes/ship.route.js</code></td></tr>
+            <tr><td><code>/api/ipdMaster</code></td><td>FedEx IPD master carrier route</td></tr>
+            <tr><td><code>/api/ipdChild</code></td><td>FedEx IPD child carrier route</td></tr>
+            <tr><td><code>/api/ipdClose</code></td><td>FedEx IPD close carrier route</td></tr>
+            <tr><td><code>/api/void</code></td><td><code>routes/void.route.js</code></td></tr>
+            <tr><td><code>/api/track</code></td><td><code>routes/track.route.js</code></td></tr>
+            <tr><td><code>/api/rateall</code></td><td><code>routes/rateAll.route.js</code></td></tr>
+          </tbody>
+        </table>
+        <p>
+          A mount path is a prefix, not a complete endpoint specification.
+          Read each route module or the live Swagger document for its methods
+          and concrete paths.
+        </p>
+      </section>
+
+      <section id="flow">
+        <h2>4. Request and carrier flow</h2>
+        <ol>
+          <li>A route declares the HTTP method/path and request middleware, such as upload handling.</li>
+          <li>A controller validates and interprets the request, then calls a factory or shared service.</li>
+          <li>A carrier implementation performs the provider-specific operation.</li>
+          <li>The controller may persist successful results, generate documents, or invoke related services.</li>
+          <li>The route/controller returns the operation response.</li>
+        </ol>
+        <p>
+          For example, the shipment route accepts a shipment request and can
+          accept an in-memory <code>invoiceFile</code> upload. The shipment
+          controller coordinates validation, carrier dispatch, requested
+          document generation, persistence of successful shipment results, and
+          the response. Tracking selects a carrier and calls its tracking
+          operation.
+        </p>
+        <p>
+          Carrier modules do not necessarily implement identical operations.
+          Check a carrier's exports and the relevant factory before assuming
+          support or adding an operation.
+        </p>
+        <h3>Carrier coverage</h3>
+        <p>
+          The <code>carriers/</code> tree includes ABF, Averitt, Blue Dart,
+          Canada Post, DHL/DHL GF, Estes, FedEx/FedEx Freight, ODFL, Pitt Ohio,
+          Purolator, RL, Saia, SEFL, UPS, USPS, XPO, and Generic integrations.
+          The shipping factory discovers carrier directories and selects
+          implementations; rating uses a separate rate factory. Exact support,
+          configuration, and behavior vary by carrier and operation.
+        </p>
+      </section>
+
+      <section id="data">
+        <h2>5. Data and shared services</h2>
+        <h3>PostgreSQL</h3>
+        <p>
+          <code>database/db.js</code> configures PostgreSQL access through
+          <code>pg-promise</code> using <code>DATABASE_URL</code>.
+          <code>database/dbsaveandupdate.js</code> contains application-level
+          lookups and persistence functions, including carrier/service/
+          credential and shipper-location lookups, plus shipment, tracking,
+          rates, transactions, and invoice-related operations.
+        </p>
+        <p>
+          Before changing persistence, trace the caller and inspect the SQL and
+          expected database schema. This guide does not prescribe database
+          table definitions or claim a local database is available.
+        </p>
+        <h3>Shared integration helpers</h3>
+        <p>
+          <code>Reuse/</code>, <code>generic/</code>, <code>lib/</code>, and
+          <code>utils/</code> contain shared API/token/transport helpers,
+          FTP/SFTP support, response formatting, logging and error helpers,
+          and the external document-engine client. Reuse established helpers
+          when extending carrier behavior.
+        </p>
+      </section>
+
+      <section id="integrations">
+        <h2>6. SAP, EDI, documents, and tracking</h2>
+        <ul>
+          <li><strong>SAP:</strong> <code>SAPSHIP/</code>, <code>SAPRATE/</code>, <code>SAPTRACK/</code>, and <code>SAPINVOICE/</code> contain SAP-facing shipment, rate, tracking, and invoice-event code.</li>
+          <li><strong>EDI:</strong> <code>edi/</code> contains X12 handling; <code>edi/edi.js</code> includes a handler that builds an 856 shipment notice.</li>
+          <li><strong>Documents:</strong> <code>ShippingDocuments/</code> has shipping document helpers; shipment processing can call an external document engine configured with <code>DOC_ENGINE_URL</code>.</li>
+          <li><strong>Tracking:</strong> Route/controller code is under <code>routes/</code> and <code>controllers/</code>; other tracking code is under <code>TRACKING/</code> and <code>jobs/</code>.</li>
+        </ul>
+        <p class="note">
+          Some modules define their own Express routers or handlers but are
+          not mounted by the main <code>index.js</code> app. Their active
+          invocation path may be a separate process or external integration;
+          verify deployment configuration before treating them as main-app
+          endpoints.
+        </p>
+      </section>
+
+      <section id="jobs">
+        <h2>7. Background processing</h2>
+        <p>
+          <code>jobs/</code> contains scheduled or batch processing code,
+          including tracking and mail-related jobs. <code>Procfile</code>
+          declares web and worker process types, but <code>jobRunner.js</code>
+          currently only logs startup; its job imports are commented out.
+          Confirm how jobs start in the target environment before relying on
+          the worker declaration to run a schedule.
+        </p>
+      </section>
+
+      <section id="configuration">
+        <h2>8. Configuration and secrets</h2>
+        <p>
+          <code>.env.example</code> lists example configuration keys and
+          placeholders. Trace each setting to its consumer and set production
+          values in the hosting environment. At minimum, documented
+          integrations use settings such as <code>DATABASE_URL</code> and,
+          where applicable, <code>DOC_ENGINE_URL</code>; carrier and SAP
+          integrations may require additional credentials and endpoint
+          settings.
+        </p>
+        <p class="warning">
+          Never copy real credentials from a local <code>.env</code> into
+          source control, documentation, logs, or client-side code. Store
+          production secrets in the deployment platform's secret/environment
+          variable settings. The example file contains placeholders only.
+        </p>
+        <h3>Swagger Google sign-in</h3>
+        <p>
+          Google OAuth in <code>middleware/swaggerGoogleAuth.js</code> is
+          specifically for Swagger, not shipping APIs. The
+          <code>requireAuth</code> middleware is currently commented out in
+          <code>index.js</code>, so <code>/api-docs/</code> is publicly
+          accessible. OAuth routes and session setup remain mounted. To enable
+          the gate, configure the Google client ID/secret, callback URL,
+          allowlisted Gmail addresses, and session secret from
+          <code>.env.example</code>, then enable
+          <code>swaggerGoogleAuth.requireAuth</code> and verify allowed and
+          denied accounts.
+        </p>
+      </section>
+
+      <section id="deployment">
+        <h2>9. Deployment and operations</h2>
+        <ul>
+          <li><strong>Docker:</strong> <code>dockerfile</code> uses Node 20 Alpine, installs Chromium for Puppeteer, and starts <code>index.js</code>.</li>
+          <li><strong>Cloud Foundry-style deployment:</strong> <code>manifest.yml</code> contains app/deployment metadata.</li>
+          <li><strong>Process declarations:</strong> <code>Procfile</code> declares web and worker process types.</li>
+          <li><strong>Port:</strong> The web process reads <code>PORT</code>, defaulting to <code>5001</code>.</li>
+          <li><strong>External dependencies:</strong> Database, carrier services, and optional document-engine integrations need configured credentials and network access.</li>
+        </ul>
+        <p>
+          For a release, verify that the configured process invokes the
+          intended web and worker entry points. A declaration in a deployment
+          file does not prove that a particular job or module is running.
+        </p>
+      </section>
+
+      <section id="development">
+        <h2>10. Development and verification</h2>
+        <ol>
+          <li>Install dependencies with <code>npm install</code> when setting up a checkout.</li>
+          <li>Configure required local environment values without committing secrets.</li>
+          <li>Start the web service with <code>npm start</code>.</li>
+          <li>Open <code>/api-docs</code> to inspect the API contract.</li>
+          <li>Use examples under <code>requests/</code> where applicable and inspect the matching route/controller/carrier code.</li>
+          <li>Exercise carrier operations only with suitable test credentials and non-production endpoints when available.</li>
+        </ol>
+        <p>
+          The current <code>package.json</code> does not define a test script,
+          and no automated project test suite was identified during this
+          documentation pass. Run appropriate checks for code changes and
+          consider adding focused tests for new or changed behavior.
+        </p>
+      </section>
+
+      <section id="maintenance">
+        <h2>11. Maintenance checklist</h2>
+        <ul>
+          <li>Update relevant route, controller, factory, and carrier code together.</li>
+          <li>Confirm carrier operation support rather than assuming uniform capabilities.</li>
+          <li>Preserve request/response shapes described by Swagger and existing callers.</li>
+          <li>Verify database effects and failure handling for persistence changes.</li>
+          <li>Check XML parsing and request-size assumptions for SAP/EDI changes.</li>
+          <li>Confirm new routers are mounted or invoked in their deployed process.</li>
+          <li>Keep credentials out of source control and logs.</li>
+          <li>Update this guide when architecture, process entry points, or deployment behavior changes.</li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>
