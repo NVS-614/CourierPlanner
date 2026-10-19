@@ -10,8 +10,8 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: 'https://shipapiv3.cfapps.eu10-004.hana.ondemand.com/api',
-        description: 'Production Server',
+        url: '/api',
+        description: 'Current server',
       },
     ],
     components: {

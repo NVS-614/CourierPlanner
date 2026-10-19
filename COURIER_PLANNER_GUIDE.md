@@ -60,6 +60,9 @@ reachable through `index.js`.
 - Local command: `npm start` (runs `node index.js`).
 - Port: `PORT` environment variable, falling back to `5001`.
 - API description: Swagger UI is mounted at `/api-docs`.
+- Swagger uses the relative server URL `/api`, so its requests target the same
+  host and scheme as the current Swagger UI, in both local and deployed
+  environments.
 
 ### Middleware and request handling
 
