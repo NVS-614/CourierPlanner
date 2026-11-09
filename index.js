@@ -5,7 +5,6 @@ const swaggerDocs = require('./swagger');
 const createSwaggerGoogleAuth = require('./middleware/swaggerGoogleAuth');
 const bodyParser = require('body-parser');
 require('body-parser-xml')(bodyParser);
-
 require('dotenv').config();
 
 const app = express();
@@ -91,7 +90,6 @@ app.use('/api/track', require('./routes/track.route'));
 //app.use('/api/rate', require('./routes/rate.route'));
 app.use('/api/rateall', require('./routes/rateAll.route'));
 
-
 /* =====================================================
    GLOBAL ERROR HANDLER (IMPORTANT FOR CLOUD)
 ===================================================== */
@@ -109,7 +107,7 @@ app.use((err, req, res, next) => {
    SERVER START
 ===================================================== */
 
-const port = process.env.PORT || 5001;
+const port = process.env.PORT || 3001;
 
 app.listen(port, () => {
   console.log(`🚀 Shipment Service running on port ${port}`);
