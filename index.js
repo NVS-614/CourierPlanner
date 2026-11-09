@@ -27,6 +27,7 @@ app.use((req, res, next) => {
     return next();
   }
 
+  
   const origin = req.get('Origin');
   if (origin && !isAllowedOrigin(origin)) {
     return res.status(403).json({
