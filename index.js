@@ -93,7 +93,6 @@ app.use('/api/rateall', require('./routes/rateAll.route'));
 /* =====================================================
    GLOBAL ERROR HANDLER (IMPORTANT FOR CLOUD)
 ===================================================== */
-
 app.use((err, req, res, next) => {
   console.error(err);
 
