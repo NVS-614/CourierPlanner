@@ -10,7 +10,6 @@ Freight = cost to transport goods
 totalNetCharge = totalNetFreight + totalSurcharges **/
 
 const carrierFactory = require('../factories/carrier.ratefactory');
-const dbCon = require('../database/dbsaveandupdate.js');
 
 exports.rateAll = async (req, res) => {
     const rateResponse = {
@@ -21,28 +20,16 @@ exports.rateAll = async (req, res) => {
     };
 
     try {
-        const chargeCodeData = await dbCon.fetchChargeCodes();
-        let carrierDetailsList = req.body.REQUEST.CARRIER_DETAILS;
+        const chargeCodeData = null;
+        const carrierDetailsList = req.body.REQUEST.CARRIER_DETAILS;
 
         if (!Array.isArray(carrierDetailsList) || carrierDetailsList.length === 0) {
-            const locationId = req.body.REQUEST.HEADER_INFO?.LOCATION;
-
-            if (!locationId) {
-                return res.status(200).json({
-                    RESPONSE: {
-                        RATE_SERVICES: [],
-                        ERRORS: [{ "CARRIER": "", MESSAGE: 'CARRIER_DETAILS or Location is required' }]
-                    }
-
-                });
-            }
-
-            // FIX: fetchCarrierDetailsByLocation was called but never defined.
-            // Replaced with a real DB lookup using the existing helper.
-            const rows = await dbCon.fetchCarrierCredentials();
-            carrierDetailsList = rows
-                .map(r => (typeof r.details === 'string' ? JSON.parse(r.details) : r.details))
-                .filter(d => d?.LOCATION === locationId && d?.IsActive !== false);
+            return res.status(200).json({
+                RESPONSE: {
+                    RATE_SERVICES: [],
+                    ERRORS: [{ "CARRIER": "", MESSAGE: 'CARRIER_DETAILS is required' }]
+                }
+            });
         }
         console.log('Rate Request to SIG is', JSON.stringify(req.body))
         // 🚀 Run all carriers in parallel

@@ -7,7 +7,6 @@ const Getcode = require('../../Reuse/ServicesandCodes.js');
 const labeldocprocess = require("../../ShippingDocuments/labeldocuments.js");
 const documentprocess = require("../../ShippingDocuments/documents.js");
 const getToken = require('./estes_token_manager.js');
-const { fetchChargeCodes } = require('../../database/dbsaveandupdate.js');
 
 const axiosInstance = axios.create({
     timeout: 20000,

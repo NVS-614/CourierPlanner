@@ -2,7 +2,6 @@
 const ipdchild = require("../carriers/fedex/ipdchild.js");
 const ipdclose = require("../carriers/fedex/ipdclose.js");
 const ipdmaster = require("../carriers/fedex/ipdmaster.js");
-const dbCon = require("../database/dbsaveandupdate.js");
 const carrierFactory = require('../factories/carrier.factory');
 const docEngine = require('../lib/docEngineClient.js');
 
@@ -77,8 +76,7 @@ exports.ship = async (req, res, next) => {
             }
 
             console.log('Ship Request to SIG is', JSON.stringify(req.body));
-            const chargeCodeData = await dbCon.fetchChargeCodes();
-            RESPONSE = await carrier.ship(req.body.REQUEST, chargeCodeData);
+            RESPONSE = await carrier.ship(req.body.REQUEST, null);
         }
 
         // ── Only generate documents on successful ship ────────────────────────
@@ -124,14 +122,6 @@ exports.ship = async (req, res, next) => {
             }
         }
         // ─────────────────────────────────────────────────────────────────────
-
-        try {
-            // FIX: await the async DB call so errors are caught by the catch block.
-            if (RESPONSE?.STATUS === 'Success')
-                await dbCon.dbShipsave(RESPONSE);
-        } catch (error) {
-            console.log(error.message);
-        }
 
         return res.status(200).json({ RESPONSE });
 

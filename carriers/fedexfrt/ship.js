@@ -4,7 +4,6 @@ const axios = require('axios');
 const reuse = require('../../Reuse/utilityfunctions.js');
 const { getFedexToken } = require('../../Reuse/fedex_token_manager.js');
 const { getCSPFedexToken } = require('../../Reuse/fedex_csptoken_manager.js');
-const dbCon = require("../../database/dbsaveandupdate.js");
 //const { uploadETD } = require('./FedExETD');
 require('dotenv').config();
 

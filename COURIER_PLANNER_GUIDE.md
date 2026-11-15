@@ -23,7 +23,7 @@ HTTP request
   -> mounted route
   -> controller
   -> carrier factory / carrier implementation or shared service
-  -> optional database, document, or tracking work
+  -> optional document or tracking work
   -> formatted HTTP response
 ```
 
@@ -41,9 +41,8 @@ reachable through `index.js`.
 | Business logic | `controllers/` | Validates and coordinates shipping operations |
 | Carrier integrations | `carriers/` | Carrier-specific API, credential, label, rate, and tracking logic |
 | Carrier selection | `factories/` | Discovers/chooses carrier implementations |
-| Database access | `database/` | PostgreSQL connection and persistence/lookups |
 | Shared integration helpers | `Reuse/`, `generic/`, `lib/`, `utils/` | Common API, token, transport, document, response and logging helpers |
-| SAP-facing modules | `SAPSHIP/`, `SAPRATE/`, `SAPTRACK/`, `SAPINVOICE/` | SAP TMS shipping, rates, tracking, and invoice events |
+| SAP-facing modules | `SAPSHIP/`, `SAPTRACK/`, `SAPINVOICE/`, `SHIPCORE/` | Remaining SAP shipping, tracking, and invoice helpers |
 | EDI | `edi/` | X12 message handling and generation |
 | Shipping documents | `ShippingDocuments/` | Label/document helpers and transformations |
 | Tracking and batch jobs | `jobs/`, `TRACKING/` | Scheduled or batch processing |
@@ -84,7 +83,6 @@ files for the specific HTTP methods, parameter shapes, and response schemas.
 
 | Mount path | Route source / domain |
 | --- | --- |
-| `/api/getshipdata` | `routes/getshipdata.route.js` |
 | `/api/addressvalidation` | `routes/addressvalidate.route.js` |
 | `/api/return` | `routes/return.route.js` |
 | `/api/ship` | `routes/ship.route.js` |
@@ -134,17 +132,13 @@ behavior vary by carrier and operation.
 
 ## 5. Data and shared services
 
-### PostgreSQL
+### No database
 
-`database/db.js` configures PostgreSQL access through `pg-promise` using
-`DATABASE_URL`. `database/dbsaveandupdate.js` contains application-level
-lookups and persistence functions, including carrier/service/credential and
-shipper-location lookups, plus shipment, tracking, rates, transactions, and
-invoice-related operations.
-
-Before changing persistence, trace the caller and inspect the SQL and expected
-database schema. This repository guide does not prescribe database table
-definitions or claim that a local database is available.
+The service does not use a database. Shipments, voids, and returns are not
+persisted; each API call works only from its request and the carrier response.
+Rate requests must include `CARRIER_DETAILS` (there is no location-based
+carrier lookup), and charge lines are returned without a `SAP_CHARGE_CODE`
+mapping.
 
 ### Shared integration helpers
 
@@ -155,8 +149,8 @@ engine. Reuse these established helpers when extending carrier behavior.
 
 ## 6. SAP, EDI, documents, and tracking
 
-- **SAP modules:** `SAPSHIP/`, `SAPRATE/`, `SAPTRACK/`, and `SAPINVOICE/`
-  contain SAP-facing shipment, rate, tracking, and invoice-event code.
+- **SAP modules:** `SAPSHIP/`, `SAPTRACK/`, `SAPINVOICE/`, and `SHIPCORE/`
+  contain the remaining SAP-facing shipment, tracking, and invoice helpers.
 - **EDI:** `edi/` contains X12 handling; `edi/edi.js` includes an Express
   handler that builds an 856 shipment-notice message.
 - **Documents:** `ShippingDocuments/` contains shipping document helpers.
@@ -184,8 +178,7 @@ before relying on the worker declaration to run a particular schedule.
 `.env.example` lists example configuration keys and placeholders. Use it as a
 starting inventory, then trace each setting to its consumer and provide
 production values through the hosting environment. At minimum, the documented
-integrations use settings such as `DATABASE_URL` and, where applicable,
-`DOC_ENGINE_URL`; carrier and SAP integrations may require additional
+integrations use settings such as `DOC_ENGINE_URL`; carrier and SAP integrations may require additional
 credentials and endpoint settings.
 
 Never copy real credentials from a local `.env` into source control,
@@ -213,7 +206,7 @@ the implementation.
   metadata.
 - **Process declarations:** `Procfile` declares web and worker process types.
 - **Port:** The web process reads `PORT`, defaulting to 5001.
-- **External dependencies:** Database, carrier services, and optional
+- **External dependencies:** Carrier services and optional
   document-engine integrations require their corresponding deployed
   credentials and network access.
 
@@ -244,7 +237,6 @@ new or changed behavior.
 - Confirm carrier operation support instead of assuming uniform capabilities.
 - Preserve request and response shapes described by Swagger and existing
   callers.
-- Verify database effects and failure handling for persistence changes.
 - Check XML parsing and request-size assumptions for SAP/EDI changes.
 - Confirm any new router is actually mounted or invoked in its deployed
   process.

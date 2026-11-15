@@ -40,8 +40,6 @@
     "pdf-parse": "^1.1.4",
     "pdfkit": "^0.15.2",
     "pdfkit-table": "^0.1.99",
-    "pg": "^8.16.3",
-    "pg-promise": "^11.15.0",
     "puppeteer": "^24.41.0",
     "qrcode": "^1.5.4",
     "sharp": "^0.34.5",

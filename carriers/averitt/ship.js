@@ -6,7 +6,6 @@ const reuse = require('../../Reuse/utilityfunctions.js');
 const Getcode = require('../../Reuse/ServicesandCodes.js');
 const labeldocprocess = require("../../ShippingDocuments/labeldocuments.js");
 const documentprocess = require("../../ShippingDocuments/documents.js");
-const { fetchChargeCodes } = require('../../database/dbsaveandupdate.js');
 
 const axiosInstance = axios.create({
     timeout: 20000,

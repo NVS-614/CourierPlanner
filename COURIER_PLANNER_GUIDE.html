@@ -163,7 +163,7 @@
   -> mounted route
   -> controller
   -> carrier factory / carrier implementation or shared service
-  -> optional database, document, or tracking work
+  -> optional document or tracking work
   -> formatted HTTP response</code></pre>
         <p class="note">
           Not every folder is an endpoint mounted by the main Express app.
@@ -183,9 +183,8 @@
             <tr><td>Business logic</td><td><code>controllers/</code></td><td>Validates and coordinates shipping operations</td></tr>
             <tr><td>Carrier integrations</td><td><code>carriers/</code></td><td>Carrier-specific API, credential, label, rate, and tracking code</td></tr>
             <tr><td>Carrier selection</td><td><code>factories/</code></td><td>Discovers and selects carrier implementations</td></tr>
-            <tr><td>Database access</td><td><code>database/</code></td><td>PostgreSQL connection, lookups, persistence</td></tr>
             <tr><td>Shared helpers</td><td><code>Reuse/</code>, <code>generic/</code>, <code>lib/</code>, <code>utils/</code></td><td>Common API, transport, document, response, and logging helpers</td></tr>
-            <tr><td>SAP</td><td><code>SAPSHIP/</code>, <code>SAPRATE/</code>, <code>SAPTRACK/</code>, <code>SAPINVOICE/</code></td><td>SAP TMS shipments, rates, tracking, and invoice events</td></tr>
+            <tr><td>SAP</td><td><code>SAPSHIP/</code>, <code>SAPTRACK/</code>, <code>SAPINVOICE/</code>, <code>SHIPCORE/</code></td><td>Remaining SAP shipping, tracking, and invoice helpers</td></tr>
             <tr><td>EDI</td><td><code>edi/</code></td><td>X12 message handling and generation</td></tr>
             <tr><td>Documents</td><td><code>ShippingDocuments/</code></td><td>Shipping document helpers and transformations</td></tr>
             <tr><td>Jobs</td><td><code>jobs/</code>, <code>TRACKING/</code></td><td>Scheduled or batch processing</td></tr>
@@ -227,7 +226,6 @@
         <table>
           <thead><tr><th>Mount path</th><th>Route source / domain</th></tr></thead>
           <tbody>
-            <tr><td><code>/api/getshipdata</code></td><td><code>routes/getshipdata.route.js</code></td></tr>
             <tr><td><code>/api/addressvalidation</code></td><td><code>routes/addressvalidate.route.js</code></td></tr>
             <tr><td><code>/api/return</code></td><td><code>routes/return.route.js</code></td></tr>
             <tr><td><code>/api/ship</code></td><td><code>routes/ship.route.js</code></td></tr>
@@ -281,19 +279,14 @@
 
       <section id="data">
         <h2>5. Data and shared services</h2>
-        <h3>PostgreSQL</h3>
+        <h3>No database</h3>
         <p>
-          <code>database/db.js</code> configures PostgreSQL access through
-          <code>pg-promise</code> using <code>DATABASE_URL</code>.
-          <code>database/dbsaveandupdate.js</code> contains application-level
-          lookups and persistence functions, including carrier/service/
-          credential and shipper-location lookups, plus shipment, tracking,
-          rates, transactions, and invoice-related operations.
-        </p>
-        <p>
-          Before changing persistence, trace the caller and inspect the SQL and
-          expected database schema. This guide does not prescribe database
-          table definitions or claim a local database is available.
+          The service does not use a database. Shipments, voids, and returns
+          are not persisted; each API call works only from its request and the
+          carrier response. Rate requests must include
+          <code>CARRIER_DETAILS</code> (there is no location-based carrier
+          lookup), and charge lines are returned without a
+          <code>SAP_CHARGE_CODE</code> mapping.
         </p>
         <h3>Shared integration helpers</h3>
         <p>
@@ -308,7 +301,7 @@
       <section id="integrations">
         <h2>6. SAP, EDI, documents, and tracking</h2>
         <ul>
-          <li><strong>SAP:</strong> <code>SAPSHIP/</code>, <code>SAPRATE/</code>, <code>SAPTRACK/</code>, and <code>SAPINVOICE/</code> contain SAP-facing shipment, rate, tracking, and invoice-event code.</li>
+          <li><strong>SAP:</strong> <code>SAPSHIP/</code>, <code>SAPTRACK/</code>, <code>SAPINVOICE/</code>, and <code>SHIPCORE/</code> contain the remaining SAP-facing shipment, tracking, and invoice helpers.</li>
           <li><strong>EDI:</strong> <code>edi/</code> contains X12 handling; <code>edi/edi.js</code> includes a handler that builds an 856 shipment notice.</li>
           <li><strong>Documents:</strong> <code>ShippingDocuments/</code> has shipping document helpers; shipment processing can call an external document engine configured with <code>DOC_ENGINE_URL</code>.</li>
           <li><strong>Tracking:</strong> Route/controller code is under <code>routes/</code> and <code>controllers/</code>; other tracking code is under <code>TRACKING/</code> and <code>jobs/</code>.</li>
@@ -340,8 +333,7 @@
           <code>.env.example</code> lists example configuration keys and
           placeholders. Trace each setting to its consumer and set production
           values in the hosting environment. At minimum, documented
-          integrations use settings such as <code>DATABASE_URL</code> and,
-          where applicable, <code>DOC_ENGINE_URL</code>; carrier and SAP
+          integrations use settings such as <code>DOC_ENGINE_URL</code>; carrier and SAP
           integrations may require additional credentials and endpoint
           settings.
         </p>
@@ -373,7 +365,7 @@
           <li><strong>Cloud Foundry-style deployment:</strong> <code>manifest.yml</code> contains app/deployment metadata.</li>
           <li><strong>Process declarations:</strong> <code>Procfile</code> declares web and worker process types.</li>
           <li><strong>Port:</strong> The web process reads <code>PORT</code>, defaulting to <code>5001</code>.</li>
-          <li><strong>External dependencies:</strong> Database, carrier services, and optional document-engine integrations need configured credentials and network access.</li>
+          <li><strong>External dependencies:</strong> Carrier services, and optional document-engine integrations need configured credentials and network access.</li>
         </ul>
         <p>
           For a release, verify that the configured process invokes the
@@ -406,7 +398,6 @@
           <li>Update relevant route, controller, factory, and carrier code together.</li>
           <li>Confirm carrier operation support rather than assuming uniform capabilities.</li>
           <li>Preserve request/response shapes described by Swagger and existing callers.</li>
-          <li>Verify database effects and failure handling for persistence changes.</li>
           <li>Check XML parsing and request-size assumptions for SAP/EDI changes.</li>
           <li>Confirm new routers are mounted or invoked in their deployed process.</li>
           <li>Keep credentials out of source control and logs.</li>

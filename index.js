@@ -76,7 +76,6 @@ app.use(
    NEW UNIFIED CARRIER API (IMPORTANT)
 ===================================================== */
 //app.use('/api/addressvalidation', require('./carriers/fedex/addressvalidation'));
-app.use('/api/getshipdata', require("./routes/getshipdata.route"));
 app.use('/api/addressvalidation', require('./routes/addressvalidate.route'));
 app.use('/api/return', require('./routes/return.route'));
 

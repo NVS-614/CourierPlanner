@@ -1,5 +1,4 @@
 // controllers/void.controller.js
-const dbCon = require("../database/dbsaveandupdate.js");
 const carrierFactory = require('../factories/carrier.factory');
 exports.void = async (req, res) => {
     try {
@@ -29,13 +28,6 @@ exports.void = async (req, res) => {
         }
 
         const RESPONSE = await carrier.void(req.body.REQUEST);
-        try {
-            // FIX: await the async DB call so errors are caught.
-            if (RESPONSE.STATUS === 'Success')
-                await dbCon.dbShipdelete(req.body.REQUEST);
-        } catch (error) {
-            console.log(error.message)
-        }
         return res.status(200).json({ RESPONSE });
 
     } catch (err) {

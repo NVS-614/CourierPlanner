@@ -1,5 +1,4 @@
 // controllers/return.controller.js
-const dbCon = require("../database/dbsaveandupdate.js");
 const carrierFactory = require('../factories/carrier.factory');
 
 exports.return = async (req, res, next) => {
@@ -45,13 +44,6 @@ exports.return = async (req, res, next) => {
         }
 
         const RESPONSE = await carrier.returns(req.body.REQUEST);
-        try {
-            // FIX: await the async DB call so errors are caught.
-            if (RESPONSE.STATUS === 'Success')
-                await dbCon.dbShipsave(RESPONSE);
-        } catch (error) {
-            console.log(error.message)
-        }
         return res.status(200).json({ RESPONSE });
     } catch (err) {
         return res.status(500).json({
