@@ -35,7 +35,7 @@ jobs:
 
           Get-ChildItem -Force $root |
             Where-Object {
-              $_.Name -notin @(".git", ".github", "node_modules", "publish", ".env") -and
+              $_.Name -notin @(".git", ".github", "node_modules", "publish") -and
               $_.Name -notlike ".env.*"
             } |
             ForEach-Object {
