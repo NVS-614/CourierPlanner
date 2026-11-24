@@ -10,6 +10,7 @@ Freight = cost to transport goods
 totalNetCharge = totalNetFreight + totalSurcharges **/
 
 const carrierFactory = require('../factories/carrier.ratefactory');
+const carrierApiLogging = require('../middleware/carrierApiLogging');
 
 exports.rateAll = async (req, res) => {
     const rateResponse = {
@@ -50,7 +51,10 @@ exports.rateAll = async (req, res) => {
                     chargeCodeData
                 };
 
-                return await carrier.rateAll(requestClone);
+                return await carrierApiLogging.runWithCarrier(
+                    carrierDetails.CARRIER,
+                    () => carrier.rateAll(requestClone)
+                );
 
             } catch (err) {
                 return {

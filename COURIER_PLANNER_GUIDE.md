@@ -140,6 +140,14 @@ Rate requests must include `CARRIER_DETAILS` (there is no location-based
 carrier lookup), and charge lines are returned without a `SAP_CHARGE_CODE`
 mapping.
 
+Carrier HTTP exchanges are written as daily JSON Lines files in
+`logs/carrier-api` by default. Filenames include a sanitized delivery number
+when available; the complete delivery number remains in each log record.
+Set `CARRIER_LOG_DIR` to an absolute writable, persistent directory in
+production. The Swagger-documented
+`GET /api/logs/carrier` and `GET /api/logs/delivery/{deliveryNo}` endpoints
+read those files and require an authenticated Swagger Google session.
+
 ### Shared integration helpers
 
 `Reuse/`, `generic/`, `lib/`, and `utils/` hold shared implementation pieces.

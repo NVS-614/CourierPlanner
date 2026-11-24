@@ -6,6 +6,8 @@ const createSwaggerGoogleAuth = require('./middleware/swaggerGoogleAuth');
 const bodyParser = require('body-parser');
 require('body-parser-xml')(bodyParser);
 require('dotenv').config();
+const carrierApiLogging = require('./middleware/carrierApiLogging');
+carrierApiLogging.installAxiosAdapter();
 
 const app = express();
 const swaggerGoogleAuth = createSwaggerGoogleAuth();
@@ -18,6 +20,7 @@ app.set('trust proxy', 1);
 // Allow browser requests from Pack Planner and local development only.
 const isAllowedOrigin = (origin) =>
   origin === 'https://packplanner.runasp.net' ||
+  origin === 'https://nvsplanner.runasp.net' ||
   /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(origin);
 
 app.use((req, res, next) => {
@@ -59,6 +62,7 @@ app.use(bodyParser.xml({
 // 3️⃣ JSON & URL encoded
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(carrierApiLogging.contextMiddleware);
 
 
 app.use('/auth', ...swaggerGoogleAuth.sessionMiddleware, swaggerGoogleAuth.router);
@@ -88,6 +92,12 @@ app.use('/api/void', require('./routes/void.route'));
 app.use('/api/track', require('./routes/track.route'));
 //app.use('/api/rate', require('./routes/rate.route'));
 app.use('/api/rateall', require('./routes/rateAll.route'));
+app.use(
+  '/api/logs',
+  ...swaggerGoogleAuth.sessionMiddleware,
+  swaggerGoogleAuth.requireAuth,
+  require('./routes/carrierLogs.route')
+);
 
 /* =====================================================
    GLOBAL ERROR HANDLER (IMPORTANT FOR CLOUD)
