@@ -94,8 +94,6 @@ app.use('/api/track', require('./routes/track.route'));
 app.use('/api/rateall', require('./routes/rateAll.route'));
 app.use(
   '/api/logs',
-  ...swaggerGoogleAuth.sessionMiddleware,
-  swaggerGoogleAuth.requireAuth,
   require('./routes/carrierLogs.route')
 );
 

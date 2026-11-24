@@ -1,5 +1,5 @@
 const axios = require('axios');
-const getToken = require('../../Reuse/fedex_token_manager.js');
+const { getCSPFedexToken } = require('../../Reuse/fedex_csptoken_manager.js');
 const reuse = require('../../Reuse/utilityfunctions.js');
 const { buildTrackResponse, buildEvent } = require('../../Reuse/trackResponseFormatter.js');
 
@@ -28,11 +28,19 @@ module.exports = async (request) => {
         // Split tracking numbers into batches of 30
         const packageChunks = chunkArray(request.PACKAGES, 30);
 
-        const token = await getToken.getFedexTrackToken(
-            request.CARRIER_DETAILS.SHIPPING_ACCOUNT,
+        const cspUserId = request.CARRIER_DETAILS.CSPUserId
+            || request.CARRIER_DETAILS.CSP_USER
+            || process.env.FEDEX_CSPUSER;
+        const cspPassword = request.CARRIER_DETAILS.CSPPassword
+            || request.CARRIER_DETAILS.CSP_PASSWORD
+            || process.env.FEDEX_CSPPASSWORD;
+        const token = await getCSPFedexToken(
             tokenurl,
-            process.env.FEDEX_CSPUSER,
-             process.env.FEDEX_CSPPASSWORD,
+            cspUserId,
+            cspPassword,
+            request.CARRIER_DETAILS.USERID,
+            request.CARRIER_DETAILS.PASSWORD,
+            request.CARRIER_DETAILS.SHIPPING_ACCOUNT
         );
 
         // Run tracking requests in parallel
@@ -221,11 +229,19 @@ const getPOD = async (request, TRACKING_NUMBER) => {
             }
         });
 
-        const token = await getToken.getFedexTrackToken(
-            request.CARRIER_DETAILS.SHIPPING_ACCOUNT,
+        const cspUserId = request.CARRIER_DETAILS.CSPUserId
+            || request.CARRIER_DETAILS.CSP_USER
+            || process.env.FEDEX_CSPUSER;
+        const cspPassword = request.CARRIER_DETAILS.CSPPassword
+            || request.CARRIER_DETAILS.CSP_PASSWORD
+            || process.env.FEDEX_CSPPASSWORD;
+        const token = await getCSPFedexToken(
             tokenurl,
-            process.env.FEDEX_CSPUSER,
-            process.env.FEDEX_CSPPASSWORD
+            cspUserId,
+            cspPassword,
+            request.CARRIER_DETAILS.USERID,
+            request.CARRIER_DETAILS.PASSWORD,
+            request.CARRIER_DETAILS.SHIPPING_ACCOUNT
         );
 
         const PodRes = await axios.post(PodURL, podRequest, {

@@ -1,7 +1,7 @@
 // carriers/fedex/track.js
 
 const axios = require('axios');
-const getToken = require('../../Reuse/fedex_token_manager.js');
+const { getCSPFedexToken } = require('../../Reuse/fedex_csptoken_manager.js');
 const reuse = require('../../Reuse/utilityfunctions.js');
 require('dotenv').config();
 
@@ -28,11 +28,16 @@ module.exports = async (request) => {
             });
         });
 
-        const token = await getToken.getFedexTrackToken(
-            request.body.CARRIER_DETAILS.SHIPPING_ACCOUNT,
+        const carrierDetails = request.body.CARRIER_DETAILS;
+        const cspUserId = carrierDetails.CSPUserId || carrierDetails.CSP_USER || process.env.FEDEX_CSPUSER;
+        const cspPassword = carrierDetails.CSPPassword || carrierDetails.CSP_PASSWORD || process.env.FEDEX_CSPPASSWORD;
+        const token = await getCSPFedexToken(
             tokenurl,
-            request.body.CARRIER_DETAILS.USERID,
-            request.body.CARRIER_DETAILS.PASSWORD
+            cspUserId,
+            cspPassword,
+            carrierDetails.USERID,
+            carrierDetails.PASSWORD,
+            carrierDetails.SHIPPING_ACCOUNT
         );
 
         const trackRes = await axios.post(trackurl, trackRequest, {
@@ -167,11 +172,16 @@ const getPOD = async (request) => {
             }]
         };
 
-        const token = await getToken.getFedexTrackToken(
-            request.body.CARRIER_DETAILS.SHIPPING_ACCOUNT,
+        const carrierDetails = request.body.CARRIER_DETAILS;
+        const cspUserId = carrierDetails.CSPUserId || carrierDetails.CSP_USER || process.env.FEDEX_CSPUSER;
+        const cspPassword = carrierDetails.CSPPassword || carrierDetails.CSP_PASSWORD || process.env.FEDEX_CSPPASSWORD;
+        const token = await getCSPFedexToken(
             tokenurl,
-            request.body.CARRIER_DETAILS.USERID,
-            request.body.CARRIER_DETAILS.PASSWORD
+            cspUserId,
+            cspPassword,
+            carrierDetails.USERID,
+            carrierDetails.PASSWORD,
+            carrierDetails.SHIPPING_ACCOUNT
         );
 
         const PodRes = await axios.post(PodURL, podRequest, {

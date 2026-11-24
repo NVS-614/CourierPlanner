@@ -146,7 +146,7 @@ when available; the complete delivery number remains in each log record.
 Set `CARRIER_LOG_DIR` to an absolute writable, persistent directory in
 production. The Swagger-documented
 `GET /api/logs/carrier` and `GET /api/logs/delivery/{deliveryNo}` endpoints
-read those files and require an authenticated Swagger Google session.
+read those files without Google authentication.
 
 ### Shared integration helpers
 

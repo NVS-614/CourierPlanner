@@ -5,7 +5,13 @@ const fedexTokenCache = {};
 const fedexTrackTokenCache = {};
 
 const fetchCSPToken = async (tokenUrl, clientId, clientSecret, userId, password) => {
-    const input = `grant_type=csp_credentials&client_id=${clientId}&client_secret=${clientSecret}&child_Key=${userId}&child_secret=${password}`;
+    const input = new URLSearchParams({
+        grant_type: 'csp_credentials',
+        client_id: clientId,
+        client_secret: clientSecret,
+        child_key: userId,
+        child_secret: password
+    }).toString();
     const response = await axios.post(tokenUrl, input, {
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',

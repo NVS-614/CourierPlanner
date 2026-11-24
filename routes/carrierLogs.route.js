@@ -7,7 +7,7 @@ const carrierLogsController = require('../controllers/carrierLogs.controller');
  * /logs/carrier:
  *   get:
  *     summary: Retrieve carrier API transaction logs
- *     description: Returns locally stored carrier request and response exchanges, optionally filtered by delivery number or carrier. Requires an authenticated Swagger Google session.
+ *     description: Returns locally stored carrier request and response exchanges, optionally filtered by delivery number or carrier.
  *     tags: [Carrier Logs]
  *     parameters:
  *       - in: query
