@@ -450,7 +450,7 @@ const swaggerOptions = {
           properties: {
             CARRIER: {
               type: 'string',
-              enum: ['FEDEX', 'UPS', 'DHL', 'DHLGF', 'USPS', 'CANADAPOST', 'PUROLATOR', 'ODFL', 'ESTES', 'FEDEXFRT', 'SAIA', 'ABF', 'RL', 'SEFL']
+              enum: ['FEDEX', 'UPS', 'DHL', 'DHLGF', 'USPS', 'CANADAPOST', 'PUROLATOR', 'ODFL', 'ESTES', 'FEDEXFRT', 'SAIA', 'ABF', 'RL', 'SEFL', 'UBER']
             },
             INTEGRATION_TYPE: {
               type: 'string',
@@ -532,6 +532,9 @@ const swaggerOptions = {
                 65: UPS Worldwide Saver,
                 M2: UPS First-Class Mail,
                 M3: UPS Priority Mail
+
+                ----  UBER (Uber Direct same-day courier) ----
+                UBER_DIRECT: Uber Direct
                 `,
               example: 'FEDEX_GROUND'
             },
@@ -562,7 +565,7 @@ const swaggerOptions = {
           properties: {
             CARRIER: {
               type: 'string',
-              enum: ['FEDEX', 'UPS', 'DHL', 'DHLGF', 'USPS', 'CANADAPOST', 'PUROLATOR', 'ODFL', 'ESTES', 'FEDEXFRT', 'SAIA', 'ABF', 'RL', 'SEFL']
+              enum: ['FEDEX', 'UPS', 'DHL', 'DHLGF', 'USPS', 'CANADAPOST', 'PUROLATOR', 'ODFL', 'ESTES', 'FEDEXFRT', 'SAIA', 'ABF', 'RL', 'SEFL', 'UBER']
             },
             USERID: { type: 'string' },
             PASSWORD: { type: 'string' },
